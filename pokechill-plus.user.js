@@ -23,6 +23,8 @@
     let observer = null; // MutationObserver for Items
     let lastSeenItems = {};
     let DEBUG = false;
+    let showHpDisplay = false;
+    let hpUpdateInterval = null;
 
     function log(...args) {
         if (DEBUG) {
@@ -239,6 +241,129 @@
         console.log(`🐛 Debug mode: ${DEBUG ? 'ON' : 'OFF'}`);
     }
 
+    function toggleHpDisplay() {
+        showHpDisplay = !showHpDisplay;
+        const checkbox = document.getElementById('af-hp-toggle');
+        if (checkbox) checkbox.checked = showHpDisplay;
+
+        if (showHpDisplay) {
+            updateHpDisplay();
+            if (!hpUpdateInterval) {
+                hpUpdateInterval = setInterval(updateHpDisplay, 100);
+            }
+        } else {
+            if (hpUpdateInterval) {
+                clearInterval(hpUpdateInterval);
+                hpUpdateInterval = null;
+            }
+            removeHpDisplay();
+        }
+        console.log(`❤️ HP Display: ${showHpDisplay ? 'ON' : 'OFF'}`);
+    }
+
+    function formatHp(current, max) {
+        if (!current && current !== 0) return '';
+        if (!max) return '';
+        const currentRounded = Math.round(current);
+        const maxRounded = Math.round(max);
+        return `${currentRounded}/${maxRounded}`;
+    }
+
+    function getHpColor(current, max) {
+        const percent = (current / max) * 100;
+        if (percent > 50) return '#4caf50';
+        if (percent > 25) return '#ffc107';
+        return '#f44336';
+    }
+
+    function updateHpDisplay() {
+        if (!showHpDisplay) return;
+
+        try {
+            // Update enemy HP
+            updateEnemyHp();
+            // Update team HP
+            updateTeamHp();
+        } catch (e) {
+            log('HP Display error:', e);
+        }
+    }
+
+    function updateEnemyHp() {
+        const wildNameEl = document.getElementById('explore-wild-name');
+        if (!wildNameEl) return;
+
+        // Check if game variables exist
+        if (typeof wildPkmnHp === 'undefined' || typeof wildPkmnHpMax === 'undefined') return;
+        if (!wildPkmnHpMax || wildPkmnHpMax <= 0) return;
+
+        // Find the level span to insert HP after it
+        const levelSpan = wildNameEl.querySelector('.explore-pkmn-level');
+        if (!levelSpan) return;
+
+        // Find or create HP span for enemy
+        let hpSpan = document.getElementById('pc-plus-enemy-hp');
+        if (!hpSpan) {
+            hpSpan = document.createElement('span');
+            hpSpan.id = 'pc-plus-enemy-hp';
+            hpSpan.style.cssText = 'margin-left: 8px; font-size: 0.9em; font-weight: bold;';
+            levelSpan.parentNode.insertBefore(hpSpan, levelSpan.nextSibling);
+        }
+
+        const hpText = formatHp(wildPkmnHp, wildPkmnHpMax);
+        const hpColor = getHpColor(wildPkmnHp, wildPkmnHpMax);
+        hpSpan.textContent = `(${hpText})`;
+        hpSpan.style.color = hpColor;
+    }
+
+    function updateTeamHp() {
+        // Check if game variables exist
+        if (typeof pkmn === 'undefined' || typeof team === 'undefined') return;
+
+        const slots = ['slot1', 'slot2', 'slot3', 'slot4', 'slot5', 'slot6'];
+
+        slots.forEach((slot) => {
+            if (!team?.[slot]?.pkmn?.id) return;
+
+            const pokemonId = team[slot].pkmn.id;
+            const pokemon = pkmn[pokemonId];
+            if (!pokemon || !pokemon.playerHpMax) return;
+
+            // In battle mode, ID is "explore-slot1-member" etc.
+            const teamMemberEl = document.getElementById(`explore-${slot}-member`);
+            if (!teamMemberEl) return;
+
+            // Find the level span to insert HP after it (like enemy)
+            const levelSpan = teamMemberEl.querySelector('.explore-pkmn-level');
+            if (!levelSpan) return;
+
+            // Find or create HP span for this team member
+            let hpSpan = document.getElementById(`pc-plus-team-hp-${slot}`);
+            if (!hpSpan) {
+                hpSpan = document.createElement('span');
+                hpSpan.id = `pc-plus-team-hp-${slot}`;
+                hpSpan.style.cssText = 'margin-left: 6px; font-size: 0.85em; font-weight: bold;';
+                levelSpan.parentNode.insertBefore(hpSpan, levelSpan.nextSibling);
+            }
+
+            const hpText = formatHp(pokemon.playerHp, pokemon.playerHpMax);
+            const hpColor = getHpColor(pokemon.playerHp, pokemon.playerHpMax);
+            hpSpan.textContent = `(${hpText})`;
+            hpSpan.style.color = hpColor;
+        });
+    }
+
+    function removeHpDisplay() {
+        const enemyHp = document.getElementById('pc-plus-enemy-hp');
+        if (enemyHp) enemyHp.remove();
+
+        const slots = ['slot1', 'slot2', 'slot3', 'slot4', 'slot5', 'slot6'];
+        slots.forEach(slot => {
+            const teamHp = document.getElementById(`pc-plus-team-hp-${slot}`);
+            if (teamHp) teamHp.remove();
+        });
+    }
+
     function updateUI() {
         const statusDot = document.getElementById('af-status-dot');
         const statusText = document.getElementById('af-status-text');
@@ -276,6 +401,10 @@
     }
 
     function createUI() {
+        if (document.getElementById('pokechill-overlay')) {
+            return;
+        }
+
         const overlay = document.createElement('div');
         overlay.id = 'pokechill-overlay';
         overlay.style.cssText = `
@@ -345,6 +474,14 @@
                 ">↺</button>
             </div>
 
+            <!-- HP Display Toggle -->
+            <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid #444;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px;">
+                    <input type="checkbox" id="af-hp-toggle" style="cursor: pointer; width: 16px; height: 16px;">
+                    <span>Show HP Values</span>
+                </label>
+            </div>
+
             <!-- Item Tracking Section -->
             <div style="margin-top: 15px; padding-top: 10px; border-top: 2px solid #667eea;">
                 <div style="margin-bottom: 8px;">
@@ -371,6 +508,7 @@
         document.getElementById('af-start-btn').addEventListener('click', startAutoClick);
         document.getElementById('af-stop-btn').addEventListener('click', stopAutoClick);
         document.getElementById('af-reset-btn').addEventListener('click', resetAll);
+        document.getElementById('af-hp-toggle').addEventListener('change', toggleHpDisplay);
 
         makeDraggable(overlay);
 
