@@ -366,18 +366,13 @@
 
     function updateUI() {
         const statusDot = document.getElementById('af-status-dot');
-        const statusText = document.getElementById('af-status-text');
         const clickCountEl = document.getElementById('af-click-count');
         const startBtn = document.getElementById('af-start-btn');
         const stopBtn = document.getElementById('af-stop-btn');
-        const buttonStatus = document.getElementById('af-button-status');
 
         if (statusDot) {
-            statusDot.style.color = isRunning ? '#0f0' : '#f00';
+            statusDot.style.color = isRunning ? '#4caf50' : '#888';
             statusDot.textContent = isRunning ? '●' : '○';
-        }
-        if (statusText) {
-            statusText.textContent = isRunning ? 'Active' : 'Stopped';
         }
         if (clickCountEl) {
             clickCountEl.textContent = clickCount;
@@ -388,15 +383,17 @@
         if (stopBtn) {
             stopBtn.style.display = isRunning ? 'block' : 'none';
         }
-        if (buttonStatus) {
-            const btn = findButton();
-            if (btn) {
-                buttonStatus.textContent = '✓ Ready';
-                buttonStatus.style.color = '#0f0';
-            } else {
-                buttonStatus.textContent = '✗ Not found';
-                buttonStatus.style.color = '#f00';
-            }
+    }
+
+    function toggleSection(sectionId) {
+        const content = document.getElementById(`section-${sectionId}-content`);
+        const arrow = document.getElementById(`section-${sectionId}-arrow`);
+        if (content.style.display === 'none') {
+            content.style.display = 'block';
+            arrow.textContent = '▼';
+        } else {
+            content.style.display = 'none';
+            arrow.textContent = '▶';
         }
     }
 
@@ -425,76 +422,44 @@
         `;
 
         overlay.innerHTML = `
-            <div style="font-weight: bold; margin-bottom: 12px; font-size: 15px; color: #667eea; text-align: center;">
-                🤖 Auto-Fight
-            </div>
-            <div style="margin: 8px 0;">
-                Status: <span id="af-status-dot" style="font-weight: bold;">○</span>
-                <span id="af-status-text">Stopped</span>
-            </div>
-            <div style="margin: 8px 0;">
-                Clicks: <span id="af-click-count" style="color: #ffc107; font-weight: bold;">0</span>
-            </div>
-            <div style="margin: 8px 0; font-size: 11px;">
-                Button: <span id="af-button-status" style="font-weight: bold;">...</span>
-            </div>
-            <div style="margin-top: 12px; display: flex; gap: 8px;">
-                <button id="af-start-btn" style="
-                    flex: 1;
-                    padding: 8px;
-                    background: #4caf50;
-                    color: white;
-                    border: none;
-                    border-radius: 5px;
-                    cursor: pointer;
-                    font-weight: bold;
-                    font-size: 12px;
-                ">▶ Start</button>
-                <button id="af-stop-btn" style="
-                    flex: 1;
-                    padding: 8px;
-                    background: #f44336;
-                    color: white;
-                    border: none;
-                    border-radius: 5px;
-                    cursor: pointer;
-                    font-weight: bold;
-                    font-size: 12px;
-                    display: none;
-                ">⏸ Stop</button>
-                <button id="af-reset-btn" style="
-                    padding: 8px 12px;
-                    background: #ff9800;
-                    color: white;
-                    border: none;
-                    border-radius: 5px;
-                    cursor: pointer;
-                    font-weight: bold;
-                    font-size: 12px;
-                ">↺</button>
+            <div style="font-weight: bold; margin-bottom: 12px; font-size: 16px; color: #667eea; text-align: center;">
+                ⚡ Pokechill Plus
             </div>
 
-            <!-- HP Display Toggle -->
-            <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid #444;">
-                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px;">
-                    <input type="checkbox" id="af-hp-toggle" style="cursor: pointer; width: 16px; height: 16px;">
-                    <span>Show HP Values</span>
-                </label>
-            </div>
-
-            <!-- Item Tracking Section -->
-            <div style="margin-top: 15px; padding-top: 10px; border-top: 2px solid #667eea;">
-                <div style="margin-bottom: 8px;">
-                    <span style="font-weight: bold; color: #667eea;">📦 Collected Items</span>
+            <div class="pc-section">
+                <div class="pc-section-header" id="section-autofight-header">
+                    <span id="section-autofight-arrow">▼</span>
+                    <span>Auto-Fight</span>
+                    <span id="af-status-dot" style="margin-left: auto;">○</span>
                 </div>
-                <div id="af-item-list" style="
-                    max-height: 150px;
-                    overflow-y: auto;
-                    background: rgba(255,255,255,0.05);
-                    padding: 8px;
-                    border-radius: 5px;
-                ">
-                    <div style="color: #888; font-size: 11px; text-align: center;">No items collected</div>
+                <div class="pc-section-content" id="section-autofight-content">
+                    <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                        <button id="af-start-btn" class="pc-btn pc-btn-green">▶ Start</button>
+                        <button id="af-stop-btn" class="pc-btn pc-btn-red" style="display: none;">⏸ Stop</button>
+                        <button id="af-reset-btn" class="pc-btn pc-btn-orange">↺</button>
+                    </div>
+                    <div style="margin-bottom: 10px; font-size: 12px;">
+                        Clicks: <span id="af-click-count" style="color: #ffc107; font-weight: bold;">0</span>
+                    </div>
+                    <div style="border-top: 1px solid #444; padding-top: 10px;">
+                        <div style="font-size: 12px; color: #667eea; margin-bottom: 6px;">📦 Collected Items</div>
+                        <div id="af-item-list" class="pc-item-list">
+                            <div style="color: #888; font-size: 11px; text-align: center;">No items collected</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pc-section">
+                <div class="pc-section-header" id="section-display-header">
+                    <span id="section-display-arrow">▼</span>
+                    <span>Display Options</span>
+                </div>
+                <div class="pc-section-content" id="section-display-content">
+                    <label class="pc-checkbox-label">
+                        <input type="checkbox" id="af-hp-toggle">
+                        <span>Show HP Values</span>
+                    </label>
                 </div>
             </div>
 
@@ -509,20 +474,69 @@
         document.getElementById('af-stop-btn').addEventListener('click', stopAutoClick);
         document.getElementById('af-reset-btn').addEventListener('click', resetAll);
         document.getElementById('af-hp-toggle').addEventListener('change', toggleHpDisplay);
+        document.getElementById('section-autofight-header').addEventListener('click', () => toggleSection('autofight'));
+        document.getElementById('section-display-header').addEventListener('click', () => toggleSection('display'));
 
         makeDraggable(overlay);
 
-        const hoverStyle = `
-            #af-start-btn:hover { background: #45a049; }
-            #af-stop-btn:hover { background: #da190b; }
-            #af-reset-btn:hover { background: #e68900; }
-            #af-item-list::-webkit-scrollbar { width: 6px; }
-            #af-item-list::-webkit-scrollbar-track { background: rgba(255,255,255,0.1); border-radius: 3px; }
-            #af-item-list::-webkit-scrollbar-thumb { background: #667eea; border-radius: 3px; }
+        const styles = `
+            .pc-section { margin-bottom: 10px; }
+            .pc-section-header {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 8px;
+                background: rgba(102, 126, 234, 0.2);
+                border-radius: 5px;
+                cursor: pointer;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            .pc-section-header:hover { background: rgba(102, 126, 234, 0.3); }
+            .pc-section-content {
+                padding: 10px;
+                background: rgba(255,255,255,0.03);
+                border-radius: 0 0 5px 5px;
+            }
+            .pc-btn {
+                flex: 1;
+                padding: 8px;
+                border: none;
+                border-radius: 5px;
+                cursor: pointer;
+                font-weight: bold;
+                font-size: 12px;
+                color: white;
+            }
+            .pc-btn-green { background: #4caf50; }
+            .pc-btn-green:hover { background: #45a049; }
+            .pc-btn-red { background: #f44336; }
+            .pc-btn-red:hover { background: #da190b; }
+            .pc-btn-orange { background: #ff9800; }
+            .pc-btn-orange:hover { background: #e68900; }
+            .pc-checkbox-label {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                cursor: pointer;
+                font-size: 12px;
+            }
+            .pc-checkbox-label input { cursor: pointer; width: 16px; height: 16px; }
+            .pc-item-list {
+                max-height: 120px;
+                overflow-y: auto;
+                background: rgba(255,255,255,0.05);
+                padding: 8px;
+                border-radius: 5px;
+            }
+            .pc-item-list::-webkit-scrollbar { width: 6px; }
+            .pc-item-list::-webkit-scrollbar-track { background: rgba(255,255,255,0.1); border-radius: 3px; }
+            .pc-item-list::-webkit-scrollbar-thumb { background: #667eea; border-radius: 3px; }
+            #af-status-dot { font-size: 14px; }
         `;
-        const style = document.createElement('style');
-        style.textContent = hoverStyle;
-        document.head.appendChild(style);
+        const styleEl = document.createElement('style');
+        styleEl.textContent = styles;
+        document.head.appendChild(styleEl);
 
         return overlay;
     }
