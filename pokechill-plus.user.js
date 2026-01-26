@@ -7,6 +7,7 @@
 // @match        https://play-pokechill.github.io/*
 // @updateURL    https://raw.githubusercontent.com/TZY-1/pokechill-plus/main/pokechill-plus.user.js
 // @downloadURL  https://raw.githubusercontent.com/TZY-1/pokechill-plus/main/pokechill-plus.user.js
+// @icon         https://raw.githubusercontent.com/TZY-1/pokechill-plus/main/pokechill-plus-icon.png
 // @grant        none
 // ==/UserScript==
 

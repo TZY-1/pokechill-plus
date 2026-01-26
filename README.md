@@ -1,6 +1,12 @@
-# Pokechill Plus
+<p align="center">
+  <img src="pokechill-plus-icon.png" alt="Pokechill Plus Logo" width="128">
+</p>
 
-Tampermonkey script for [Pokechill](https://github.com/play-pokechill/play-pokechill.github.io) with auto-fight and item tracking.
+<h1 align="center">Pokechill Plus</h1>
+
+<p align="center">
+  Tampermonkey script for <a href="https://github.com/play-pokechill/play-pokechill.github.io">Pokechill</a> with auto-fight and item tracking.
+</p>
 
 ![Version](https://img.shields.io/badge/version-1.1-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
