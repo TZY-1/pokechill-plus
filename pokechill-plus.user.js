@@ -5,6 +5,8 @@
 // @description  Automatic clicking on Fight Again + Item Tracking
 // @author       Teazy
 // @match        https://play-pokechill.github.io/*
+// @updateURL    https://raw.githubusercontent.com/TZY-1/pokechill-plus/main/pokechill-plus.user.js
+// @downloadURL  https://raw.githubusercontent.com/TZY-1/pokechill-plus/main/pokechill-plus.user.js
 // @grant        none
 // ==/UserScript==
 
