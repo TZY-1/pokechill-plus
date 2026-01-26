@@ -20,9 +20,10 @@
     let itemStats = {};
     let itemImages = {};
     let ivStats = {};
+    let moveStats = {};
     let lastButtonState = false;
     let observer = null;
-    let ivObserver = null;
+    let trainingObserver = null;
     let lastSeenItems = {};
     let DEBUG = false;
     let showHpDisplay = false;
@@ -144,56 +145,94 @@
         }
     }
 
-    function setupIvObserver() {
+    function setupTrainingObserver() {
         const areaEndTitle = document.getElementById('area-end-moves-title');
         if (!areaEndTitle) {
-            setTimeout(setupIvObserver, 1000);
+            setTimeout(setupTrainingObserver, 1000);
             return;
         }
 
-        if (ivObserver) {
-            ivObserver.disconnect();
+        if (trainingObserver) {
+            trainingObserver.disconnect();
         }
 
-        log('👀 IV Observer started');
+        log('👀 Training Observer started');
 
-        ivObserver = new MutationObserver(() => {
+        trainingObserver = new MutationObserver(() => {
             const spans = areaEndTitle.querySelectorAll('span');
             spans.forEach(span => {
                 if (span.dataset.pcTracked) return;
 
                 const text = span.textContent.trim();
-                if (!text.startsWith('Increased')) return;
+                if (!text) return;
 
                 span.dataset.pcTracked = 'true';
-                log('IV text found:', text);
 
-                const statMatches = text.matchAll(/(\w+)\s+(\d+)\s+point/g);
-                for (const match of statMatches) {
-                    const statName = match[1].toLowerCase();
-                    const points = parseInt(match[2]) || 1;
-
-                    let stat = '';
-                    if (statName === 'hp') stat = 'HP';
-                    else if (statName === 'atk') stat = 'Attack';
-                    else if (statName === 'def') stat = 'Defense';
-                    else if (statName === 'satk') stat = 'Sp. Atk';
-                    else if (statName === 'sdef') stat = 'Sp. Def';
-                    else if (statName === 'spe') stat = 'Speed';
-
-                    if (stat) {
-                        ivStats[stat] = (ivStats[stat] || 0) + points;
-                        console.log(`📈 IV tracked: ${stat} +${points}`);
-                    }
+                if (text.includes(' learnt ')) {
+                    trackMove(text);
+                } else if (text.startsWith('Increased')) {
+                    trackIvs(text);
                 }
-                updateIvDisplay();
             });
         });
 
-        ivObserver.observe(areaEndTitle, {
+        trainingObserver.observe(areaEndTitle, {
             childList: true,
             subtree: true
         });
+    }
+
+    function trackMove(text) {
+        const moveMatch = text.match(/learnt (.+)!/);
+        if (moveMatch) {
+            const moveName = moveMatch[1];
+            moveStats[moveName] = (moveStats[moveName] || 0) + 1;
+            log(`🎯 Move tracked: ${moveName}`);
+            updateMoveDisplay();
+        }
+    }
+
+    function trackIvs(text) {
+        const statMatches = text.matchAll(/(\w+)\s+(\d+)\s+point/g);
+        for (const match of statMatches) {
+            const statName = match[1].toLowerCase();
+            const points = parseInt(match[2]) || 1;
+
+            let stat = '';
+            if (statName === 'hp') stat = 'HP';
+            else if (statName === 'atk') stat = 'Attack';
+            else if (statName === 'def') stat = 'Defense';
+            else if (statName === 'satk') stat = 'Sp. Atk';
+            else if (statName === 'sdef') stat = 'Sp. Def';
+            else if (statName === 'spe') stat = 'Speed';
+
+            if (stat) {
+                ivStats[stat] = (ivStats[stat] || 0) + points;
+                log(`📈 IV tracked: ${stat} +${points}`);
+            }
+        }
+        updateIvDisplay();
+    }
+
+    function updateMoveDisplay() {
+        const moveList = document.getElementById('af-move-list');
+        if (!moveList) return;
+
+        const sortedMoves = Object.entries(moveStats).sort((a, b) => b[1] - a[1]);
+
+        if (sortedMoves.length === 0) {
+            moveList.innerHTML = '<div style="color: #888; font-size: 11px; text-align: center;">No moves learned</div>';
+            return;
+        }
+
+        moveList.innerHTML = sortedMoves.map(([moveName, count]) => {
+            return `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin: 3px 0; font-size: 11px;">
+                    <span style="color: #fff;">◇ ${moveName}</span>
+                    <span style="color: #f472b6; font-weight: bold;">x${count}</span>
+                </div>
+            `;
+        }).join('');
     }
 
     function updateIvDisplay() {
@@ -246,10 +285,12 @@
         itemStats = {};
         itemImages = {};
         ivStats = {};
+        moveStats = {};
         lastSeenItems = {};
         updateUI();
         updateItemDisplay();
         updateIvDisplay();
+        updateMoveDisplay();
         console.log('🔄 Everything reset');
     }
 
@@ -530,6 +571,12 @@
                             <div style="color: #888; font-size: 11px; text-align: center;">No IVs gained</div>
                         </div>
                     </div>
+                    <div style="border-top: 1px solid #444; padding-top: 10px; margin-top: 10px;">
+                        <div style="font-size: 12px; color: #f472b6; margin-bottom: 6px;">◇ Moves Learned</div>
+                        <div id="af-move-list" class="pc-item-list">
+                            <div style="color: #888; font-size: 11px; text-align: center;">No moves learned</div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -670,7 +717,7 @@
         createUI();
         setInterval(updateUI, 200);
         setupItemObserver();
-        setupIvObserver();
+        setupTrainingObserver();
         console.log('⚡ Pokechill Plus loaded!');
         console.log('   Ctrl+Space: Start/stop');
         console.log('   Ctrl+D: Debug mode');
