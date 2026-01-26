@@ -19,8 +19,10 @@
     let interval = null;
     let itemStats = {};
     let itemImages = {};
-    let lastButtonState = false; // Prevents multiple clicks
-    let observer = null; // MutationObserver for Items
+    let ivStats = {};
+    let lastButtonState = false;
+    let observer = null;
+    let ivObserver = null;
     let lastSeenItems = {};
     let DEBUG = false;
     let showHpDisplay = false;
@@ -142,6 +144,79 @@
         }
     }
 
+    function setupIvObserver() {
+        const areaEndTitle = document.getElementById('area-end-moves-title');
+        if (!areaEndTitle) {
+            setTimeout(setupIvObserver, 1000);
+            return;
+        }
+
+        if (ivObserver) {
+            ivObserver.disconnect();
+        }
+
+        log('👀 IV Observer started');
+
+        ivObserver = new MutationObserver(() => {
+            const spans = areaEndTitle.querySelectorAll('span');
+            spans.forEach(span => {
+                if (span.dataset.pcTracked) return;
+
+                const text = span.textContent.trim();
+                if (!text.startsWith('Increased')) return;
+
+                span.dataset.pcTracked = 'true';
+                log('IV text found:', text);
+
+                const statMatches = text.matchAll(/(\w+)\s+(\d+)\s+point/g);
+                for (const match of statMatches) {
+                    const statName = match[1].toLowerCase();
+                    const points = parseInt(match[2]) || 1;
+
+                    let stat = '';
+                    if (statName === 'hp') stat = 'HP';
+                    else if (statName === 'atk') stat = 'Attack';
+                    else if (statName === 'def') stat = 'Defense';
+                    else if (statName === 'satk') stat = 'Sp. Atk';
+                    else if (statName === 'sdef') stat = 'Sp. Def';
+                    else if (statName === 'spe') stat = 'Speed';
+
+                    if (stat) {
+                        ivStats[stat] = (ivStats[stat] || 0) + points;
+                        console.log(`📈 IV tracked: ${stat} +${points}`);
+                    }
+                }
+                updateIvDisplay();
+            });
+        });
+
+        ivObserver.observe(areaEndTitle, {
+            childList: true,
+            subtree: true
+        });
+    }
+
+    function updateIvDisplay() {
+        const ivList = document.getElementById('af-iv-list');
+        if (!ivList) return;
+
+        const sortedIvs = Object.entries(ivStats).sort((a, b) => b[1] - a[1]);
+
+        if (sortedIvs.length === 0) {
+            ivList.innerHTML = '<div style="color: #888; font-size: 11px; text-align: center;">No IVs gained</div>';
+            return;
+        }
+
+        ivList.innerHTML = sortedIvs.map(([stat, count]) => {
+            return `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin: 3px 0; font-size: 11px;">
+                    <span style="color: #fff;">❖ ${stat}</span>
+                    <span style="color: #a78bfa; font-weight: bold;">x${count}</span>
+                </div>
+            `;
+        }).join('');
+    }
+
     function updateItemDisplay() {
         const itemList = document.getElementById('af-item-list');
         if (!itemList) return;
@@ -170,9 +245,11 @@
         clickCount = 0;
         itemStats = {};
         itemImages = {};
+        ivStats = {};
         lastSeenItems = {};
         updateUI();
         updateItemDisplay();
+        updateIvDisplay();
         console.log('🔄 Everything reset');
     }
 
@@ -447,6 +524,12 @@
                             <div style="color: #888; font-size: 11px; text-align: center;">No items collected</div>
                         </div>
                     </div>
+                    <div style="border-top: 1px solid #444; padding-top: 10px; margin-top: 10px;">
+                        <div style="font-size: 12px; color: #a78bfa; margin-bottom: 6px;">❖ IVs Gained</div>
+                        <div id="af-iv-list" class="pc-item-list">
+                            <div style="color: #888; font-size: 11px; text-align: center;">No IVs gained</div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -587,9 +670,10 @@
         createUI();
         setInterval(updateUI, 200);
         setupItemObserver();
-        console.log('🤖 Auto-Fight with Live-Item-Tracking loaded!');
-        console.log('   Ctrl+Space: Start/stop tool');
-        console.log('   Ctrl+D: Toggle debug mode');
+        setupIvObserver();
+        console.log('⚡ Pokechill Plus loaded!');
+        console.log('   Ctrl+Space: Start/stop');
+        console.log('   Ctrl+D: Debug mode');
     });
 
 })();
