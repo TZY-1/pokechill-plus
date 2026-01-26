@@ -1,0 +1,44 @@
+name: Version Bump
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Extracted version: $VERSION"
+
+      - name: Update version in userscript
+        run: |
+          sed -i "s/@version.*/@version      ${{ steps.version.outputs.version }}/" pokechill-plus.user.js
+          echo "Updated userscript to version ${{ steps.version.outputs.version }}"
+
+      - name: Update version badge in README
+        run: |
+          sed -i "s/version-[0-9.]*-blue/version-${{ steps.version.outputs.version }}-blue/" README.md
+          echo "Updated README badge to version ${{ steps.version.outputs.version }}"
+
+      - name: Commit and push changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pokechill-plus.user.js README.md
+          git commit -m "Bump version to ${{ steps.version.outputs.version }}"
+          git push origin main

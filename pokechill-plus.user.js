@@ -3,7 +3,7 @@
 // @namespace    http://tampermonkey.net/
 // @version      1.0
 // @description  Automatic clicking on Fight Again + Item Tracking
-// @author       You
+// @author       Teazy
 // @match        https://play-pokechill.github.io/*
 // @grant        none
 // ==/UserScript==
