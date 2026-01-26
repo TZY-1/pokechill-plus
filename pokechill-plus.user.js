@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         Pokechill Auto-Fight
+// @name         ⚡ Pokechill Plus 
 // @namespace    http://tampermonkey.net/
 // @version      1.0
 // @description  Automatic clicking on Fight Again + Item Tracking
