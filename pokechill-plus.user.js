@@ -183,11 +183,29 @@
     }
 
     function trackMove(text) {
-        const moveMatch = text.match(/learnt (.+)!/);
+        // Matches both "Pokemon has learnt Move!" and "Pokemon learnt Move!"
+        const moveMatch = text.match(/(.+?)\s+(?:has\s+)?learnt\s+(.+)!/);
         if (moveMatch) {
-            const moveName = moveMatch[1];
-            moveStats[moveName] = (moveStats[moveName] || 0) + 1;
-            log(`🎯 Move tracked: ${moveName}`);
+            const pokemonName = moveMatch[1].trim();
+            const movesString = moveMatch[2].trim();
+
+            // Parse moves - can be "Move1", "Move1 and Move2", or "Move1, Move2, and Move3"
+            const moves = movesString
+                .split(/,\s*and\s+|,\s*|\s+and\s+/)
+                .map(m => m.trim())
+                .filter(m => m.length > 0);
+
+            if (!moveStats[pokemonName]) {
+                moveStats[pokemonName] = [];
+            }
+
+            moves.forEach(moveName => {
+                if (!moveStats[pokemonName].includes(moveName)) {
+                    moveStats[pokemonName].push(moveName);
+                    log(`🎯 Move tracked: ${pokemonName} learned ${moveName}`);
+                }
+            });
+
             updateMoveDisplay();
         }
     }
@@ -218,18 +236,35 @@
         const moveList = document.getElementById('af-move-list');
         if (!moveList) return;
 
-        const sortedMoves = Object.entries(moveStats).sort((a, b) => b[1] - a[1]);
+        const pokemonNames = Object.keys(moveStats);
 
-        if (sortedMoves.length === 0) {
+        if (pokemonNames.length === 0) {
             moveList.innerHTML = '<div style="color: #888; font-size: 11px; text-align: center;">No moves learned</div>';
             return;
         }
 
-        moveList.innerHTML = sortedMoves.map(([moveName, count]) => {
+        // Sort Pokemon by number of moves learned
+        const sortedPokemon = pokemonNames.sort((a, b) => {
+            return moveStats[b].length - moveStats[a].length;
+        });
+
+        moveList.innerHTML = sortedPokemon.map(pokemonName => {
+            const moves = moveStats[pokemonName];
+
+            const movesHtml = moves.map(moveName => {
+                return `
+                    <div style="margin: 2px 0 2px 12px; font-size: 10px; color: #ccc;">
+                        - ${moveName}
+                    </div>
+                `;
+            }).join('');
+
             return `
-                <div style="display: flex; justify-content: space-between; align-items: center; margin: 3px 0; font-size: 11px;">
-                    <span style="color: #fff;">◇ ${moveName}</span>
-                    <span style="color: #f472b6; font-weight: bold;">x${count}</span>
+                <div style="margin-bottom: 8px;">
+                    <div style="font-size: 11px; font-weight: bold; color: #f472b6;">
+                        ◇ ${pokemonName} <span style="color: #888; font-size: 10px; font-weight: normal;">(${moves.length})</span>
+                    </div>
+                    ${movesHtml}
                 </div>
             `;
         }).join('');
