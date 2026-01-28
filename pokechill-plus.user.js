@@ -29,6 +29,12 @@
     let showHpDisplay = false;
     let hpUpdateInterval = null;
 
+    // Ability Hunting
+    let abilityHuntEnabled = false;
+    let targetAbility = '';
+    let abilityLog = [];
+    let lastTrainingPokemon = null;
+
     function log(...args) {
         if (DEBUG) {
             console.log(...args);
@@ -172,6 +178,8 @@
                     trackMove(text);
                 } else if (text.startsWith('Increased')) {
                     trackIvs(text);
+                } else if (text.includes(' now has ')) {
+                    trackAbility(text);
                 }
             });
         });
@@ -210,6 +218,227 @@
         }
     }
 
+    function trackAbility(text) {
+        // Matches "Pokemon now has Ability!"
+        const abilityMatch = text.match(/(.+?)\s+now has\s+(.+)!/);
+        if (abilityMatch) {
+            const pokemonName = abilityMatch[1].trim();
+            const abilityName = abilityMatch[2].trim();
+
+            abilityLog.unshift({ pokemon: pokemonName, ability: abilityName, time: new Date() });
+            if (abilityLog.length > 50) abilityLog.pop(); // Keep max 50 entries
+
+            log(`🎯 Ability tracked: ${pokemonName} got ${abilityName}`);
+            updateAbilityDisplay();
+
+            if (abilityHuntEnabled && targetAbility) {
+                const normalizedTarget = targetAbility.toLowerCase().replace(/\s+/g, '');
+                const normalizedAbility = abilityName.toLowerCase().replace(/\s+/g, '');
+
+                if (normalizedAbility === normalizedTarget) {
+                    log(`🎉 Target ability "${abilityName}" found!`);
+                    stopAbilityHunt();
+                } else {
+                    log(`❌ Got "${abilityName}", looking for "${targetAbility}", continuing...`);
+                }
+            }
+        }
+    }
+
+    function startAbilityHunt() {
+        const select = document.getElementById('af-ability-select');
+        if (!select || !select.value) {
+            log('⚠️ Please select a target ability');
+            return;
+        }
+
+        targetAbility = select.value;
+        abilityHuntEnabled = true;
+        updateAbilityHuntUI();
+        log(`🎯 Ability Hunt started for: ${targetAbility}`);
+
+        if (!isRunning) {
+            startAutoClick();
+        }
+    }
+
+    function getAvailableAbilities() {
+        if (typeof ability === 'undefined' || typeof pkmn === 'undefined' || typeof saved === 'undefined') {
+            return [];
+        }
+
+        const trainingPokemon = saved.trainingPokemon;
+        if (!trainingPokemon || !pkmn[trainingPokemon]) {
+            return [];
+        }
+
+        const pokemonTypes = pkmn[trainingPokemon].type || [];
+        const currentAbility = pkmn[trainingPokemon].ability;
+        const hiddenAbility = pkmn[trainingPokemon].hiddenAbility?.id;
+
+        const availableAbilities = Object.keys(ability).filter(a => {
+            const ab = ability[a];
+            if (!ab.type) return false;
+            if (a === hiddenAbility) return false; // Hidden ability is separate
+            if (a === currentAbility) return false; // Already has this ability
+
+            return ab.type.includes("all") || ab.type.some(t => pokemonTypes.includes(t));
+        });
+
+        availableAbilities.sort((a, b) => {
+            const rarityDiff = (ability[a].rarity || 1) - (ability[b].rarity || 1);
+            if (rarityDiff !== 0) return rarityDiff;
+            return a.localeCompare(b);
+        });
+
+        return availableAbilities;
+    }
+
+    function checkTrainingPokemonChange() {
+        if (typeof saved === 'undefined' || typeof pkmn === 'undefined') return;
+
+        const currentPokemon = saved.trainingPokemon;
+        if (currentPokemon !== lastTrainingPokemon) {
+            lastTrainingPokemon = currentPokemon;
+            updateAbilitySelect();
+        }
+    }
+
+    function getTrainingPokemonName() {
+        if (typeof saved === 'undefined' || typeof pkmn === 'undefined') return null;
+        if (!saved.trainingPokemon || !pkmn[saved.trainingPokemon]) return null;
+
+        const id = saved.trainingPokemon;
+        return id.charAt(0).toUpperCase() + id.slice(1).replace(/([A-Z])/g, ' $1');
+    }
+
+    function updateAbilitySelect() {
+        const select = document.getElementById('af-ability-select');
+        const pokemonLabel = document.getElementById('af-ability-pokemon');
+        if (!select) return;
+
+        const pokemonName = getTrainingPokemonName();
+        if (pokemonLabel) {
+            pokemonLabel.textContent = pokemonName || 'No Pokemon selected';
+            pokemonLabel.style.color = pokemonName ? '#69df96' : '#888';
+        }
+
+        const abilities = getAvailableAbilities();
+
+        if (abilities.length === 0) {
+            select.innerHTML = '<option value="">-- Select Pokemon first --</option>';
+            return;
+        }
+
+        const tier1 = abilities.filter(a => ability[a].rarity === 1);
+        const tier2 = abilities.filter(a => ability[a].rarity === 2);
+        const tier3 = abilities.filter(a => ability[a].rarity === 3);
+
+        let html = '<option value="">-- Select Ability --</option>';
+
+        if (tier1.length > 0) {
+            html += '<optgroup label="Common (Tier 1)">';
+            tier1.forEach(a => {
+                const name = a.charAt(0).toUpperCase() + a.slice(1).replace(/([A-Z])/g, ' $1');
+                html += `<option value="${a}">${name}</option>`;
+            });
+            html += '</optgroup>';
+        }
+
+        if (tier2.length > 0) {
+            html += '<optgroup label="Uncommon (Tier 2)">';
+            tier2.forEach(a => {
+                const name = a.charAt(0).toUpperCase() + a.slice(1).replace(/([A-Z])/g, ' $1');
+                html += `<option value="${a}">${name}</option>`;
+            });
+            html += '</optgroup>';
+        }
+
+        if (tier3.length > 0) {
+            html += '<optgroup label="Rare (Tier 3)">';
+            tier3.forEach(a => {
+                const name = a.charAt(0).toUpperCase() + a.slice(1).replace(/([A-Z])/g, ' $1');
+                html += `<option value="${a}">${name}</option>`;
+            });
+            html += '</optgroup>';
+        }
+
+        select.innerHTML = html;
+    }
+
+    function stopAbilityHunt(stopAutoFight = true) {
+        abilityHuntEnabled = false;
+        targetAbility = '';
+        updateAbilityHuntUI();
+        log('⏸️ Ability Hunt stopped');
+
+        if (stopAutoFight && isRunning) {
+            stopAutoClick();
+        }
+    }
+
+    function updateAbilityHuntUI() {
+        const startBtn = document.getElementById('af-ability-start');
+        const stopBtn = document.getElementById('af-ability-stop');
+        const statusDot = document.getElementById('af-ability-status');
+        const select = document.getElementById('af-ability-select');
+
+        if (startBtn) startBtn.style.display = abilityHuntEnabled ? 'none' : 'block';
+        if (stopBtn) stopBtn.style.display = abilityHuntEnabled ? 'block' : 'none';
+        if (statusDot) {
+            statusDot.style.color = abilityHuntEnabled ? '#4caf50' : '#888';
+            statusDot.textContent = abilityHuntEnabled ? '●' : '○';
+        }
+        if (select) select.disabled = abilityHuntEnabled;
+    }
+
+    function getAbilityRarity(abilityName) {
+        if (typeof ability === 'undefined') return 1;
+
+        const normalizedName = abilityName.toLowerCase().replace(/\s+/g, '');
+
+        for (const [key, ab] of Object.entries(ability)) {
+            if (key.toLowerCase() === normalizedName) {
+                return ab.rarity || 1;
+            }
+        }
+        return 1;
+    }
+
+    function getAbilityColor(abilityName) {
+        const rarity = getAbilityRarity(abilityName);
+        switch(rarity) {
+            case 1: return '#888';    // Common = gray
+            case 2: return '#69df96'; // Uncommon = green
+            case 3: return '#64b5f6'; // Rare = light blue
+            default: return '#888';
+        }
+    }
+
+    function updateAbilityDisplay() {
+        const abilityList = document.getElementById('af-ability-log');
+        if (!abilityList) return;
+
+        if (abilityLog.length === 0) {
+            abilityList.innerHTML = '<div style="color: #888; font-size: 11px; text-align: center;">No abilities rolled</div>';
+            return;
+        }
+
+        abilityList.innerHTML = abilityLog.slice(0, 20).map(entry => {
+            const normalizedTarget = targetAbility ? targetAbility.toLowerCase().replace(/\s+/g, '') : '';
+            const normalizedAbility = entry.ability.toLowerCase().replace(/\s+/g, '');
+            const isTarget = normalizedTarget && normalizedAbility === normalizedTarget;
+            const abilityColor = getAbilityColor(entry.ability);
+            const targetStyle = isTarget ? 'font-weight: bold; text-shadow: 0 0 5px currentColor;' : '';
+            return `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin: 3px 0; font-size: 10px;">
+                    <span style="color: #ccc;">${entry.pokemon}</span>
+                    <span style="color: ${abilityColor}; ${targetStyle}">${entry.ability}</span>
+                </div>
+            `;
+        }).join('');
+    }
+
     function trackIvs(text) {
         const statMatches = text.matchAll(/(\w+)\s+(\d+)\s+point/g);
         for (const match of statMatches) {
@@ -243,7 +472,6 @@
             return;
         }
 
-        // Sort Pokemon by number of moves learned
         const sortedPokemon = pokemonNames.sort((a, b) => {
             return moveStats[b].length - moveStats[a].length;
         });
@@ -322,11 +550,13 @@
         ivStats = {};
         moveStats = {};
         lastSeenItems = {};
+        abilityLog = [];
         updateUI();
         updateItemDisplay();
         updateIvDisplay();
         updateMoveDisplay();
-        console.log('🔄 Everything reset');
+        updateAbilityDisplay();
+        log('🔄 Everything reset');
     }
 
     function clickButton() {
@@ -366,7 +596,7 @@
             }
 
             updateUI();
-            console.log('▶️ Auto-Fight started');
+            log('▶️ Auto-Fight started');
         }
     }
 
@@ -376,8 +606,15 @@
             interval = null;
             isRunning = false;
             lastButtonState = false;
+
+            if (abilityHuntEnabled) {
+                abilityHuntEnabled = false;
+                targetAbility = '';
+                updateAbilityHuntUI();
+            }
+
             updateUI();
-            console.log('⏸️ Auto-Fight stopped');
+            log('⏸️ Auto-Fight stopped');
         }
     }
 
@@ -391,8 +628,15 @@
 
     function toggleDebug() {
         DEBUG = !DEBUG;
-        console.log(`🐛 Debug mode: ${DEBUG ? 'ON' : 'OFF'}`);
+        log(`🐛 Debug mode: ${DEBUG ? 'ON' : 'OFF'}`);
     }
+
+    // Debug function to simulate an ability roll (call from console: pcPlusSimulateAbility('AbilityName'))
+    window.pcPlusSimulateAbility = function(abilityName, pokemonName = 'TestPokemon') {
+        const fakeText = `${pokemonName} now has ${abilityName}!`;
+        log(`🧪 Simulating ability: "${fakeText}"`);
+        trackAbility(fakeText);
+    };
 
     function toggleHpDisplay() {
         showHpDisplay = !showHpDisplay;
@@ -411,7 +655,7 @@
             }
             removeHpDisplay();
         }
-        console.log(`❤️ HP Display: ${showHpDisplay ? 'ON' : 'OFF'}`);
+        log(`❤️ HP Display: ${showHpDisplay ? 'ON' : 'OFF'}`);
     }
 
     function formatHp(current, max) {
@@ -433,9 +677,7 @@
         if (!showHpDisplay) return;
 
         try {
-            // Update enemy HP
             updateEnemyHp();
-            // Update team HP
             updateTeamHp();
         } catch (e) {
             log('HP Display error:', e);
@@ -446,15 +688,12 @@
         const wildNameEl = document.getElementById('explore-wild-name');
         if (!wildNameEl) return;
 
-        // Check if game variables exist
         if (typeof wildPkmnHp === 'undefined' || typeof wildPkmnHpMax === 'undefined') return;
         if (!wildPkmnHpMax || wildPkmnHpMax <= 0) return;
 
-        // Find the level span to insert HP after it
         const levelSpan = wildNameEl.querySelector('.explore-pkmn-level');
         if (!levelSpan) return;
 
-        // Find or create HP span for enemy
         let hpSpan = document.getElementById('pc-plus-enemy-hp');
         if (!hpSpan) {
             hpSpan = document.createElement('span');
@@ -470,7 +709,6 @@
     }
 
     function updateTeamHp() {
-        // Check if game variables exist
         if (typeof pkmn === 'undefined' || typeof team === 'undefined') return;
 
         const slots = ['slot1', 'slot2', 'slot3', 'slot4', 'slot5', 'slot6'];
@@ -486,11 +724,9 @@
             const teamMemberEl = document.getElementById(`explore-${slot}-member`);
             if (!teamMemberEl) return;
 
-            // Find the level span to insert HP after it (like enemy)
             const levelSpan = teamMemberEl.querySelector('.explore-pkmn-level');
             if (!levelSpan) return;
 
-            // Find or create HP span for this team member
             let hpSpan = document.getElementById(`pc-plus-team-hp-${slot}`);
             if (!hpSpan) {
                 hpSpan = document.createElement('span');
@@ -612,6 +848,38 @@
                             <div style="color: #888; font-size: 11px; text-align: center;">No moves learned</div>
                         </div>
                     </div>
+                    <div style="border-top: 1px solid #444; padding-top: 10px; margin-top: 10px;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+                            <div style="font-size: 12px; color: #69df96;">★ Ability Hunt</div>
+                            <span id="af-ability-status" style="color: #888; font-size: 14px;">○</span>
+                        </div>
+                        <div style="margin-bottom: 8px; font-size: 11px;">
+                            Pokemon: <span id="af-ability-pokemon" style="color: #888; font-weight: bold;">No Pokemon selected</span>
+                        </div>
+                        <div style="margin-bottom: 8px;">
+                            <select id="af-ability-select" style="
+                                width: 100%;
+                                padding: 6px 8px;
+                                border: 1px solid #444;
+                                border-radius: 4px;
+                                background: rgba(30,30,30,0.95);
+                                color: #fff;
+                                font-size: 11px;
+                                outline: none;
+                                cursor: pointer;
+                            ">
+                                <option value="">-- Select Pokemon first --</option>
+                            </select>
+                        </div>
+                        <div style="display: flex; gap: 6px; margin-bottom: 8px;">
+                            <button id="af-ability-start" class="pc-btn pc-btn-green" style="font-size: 10px; padding: 5px;">▶ Hunt</button>
+                            <button id="af-ability-stop" class="pc-btn pc-btn-red" style="display: none; font-size: 10px; padding: 5px;">⏸ Stop</button>
+                        </div>
+                        <div style="font-size: 10px; color: #888; margin-bottom: 6px;">Rolled Abilities:</div>
+                        <div id="af-ability-log" class="pc-item-list" style="max-height: 80px;">
+                            <div style="color: #888; font-size: 11px; text-align: center;">No abilities rolled</div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -639,6 +907,8 @@
         document.getElementById('af-stop-btn').addEventListener('click', stopAutoClick);
         document.getElementById('af-reset-btn').addEventListener('click', resetAll);
         document.getElementById('af-hp-toggle').addEventListener('change', toggleHpDisplay);
+        document.getElementById('af-ability-start').addEventListener('click', startAbilityHunt);
+        document.getElementById('af-ability-stop').addEventListener('click', stopAbilityHunt);
         document.getElementById('section-autofight-header').addEventListener('click', () => toggleSection('autofight'));
         document.getElementById('section-display-header').addEventListener('click', () => toggleSection('display'));
 
@@ -712,7 +982,7 @@
         element.onmousedown = dragMouseDown;
 
         function dragMouseDown(e) {
-            if (e.target.tagName === 'BUTTON') return;
+            if (['BUTTON', 'SELECT', 'INPUT', 'OPTION'].includes(e.target.tagName)) return;
             e.preventDefault();
             pos3 = e.clientX;
             pos4 = e.clientY;
@@ -751,11 +1021,12 @@
     window.addEventListener('load', function() {
         createUI();
         setInterval(updateUI, 200);
+        setInterval(checkTrainingPokemonChange, 500);
         setupItemObserver();
         setupTrainingObserver();
-        console.log('⚡ Pokechill Plus loaded!');
-        console.log('   Ctrl+Space: Start/stop');
-        console.log('   Ctrl+D: Debug mode');
+        log('⚡ Pokechill Plus loaded!');
+        log('   Ctrl+Space: Start/stop');
+        log('   Ctrl+D: Debug mode');
     });
 
 })();
