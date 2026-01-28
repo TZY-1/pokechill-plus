@@ -13,10 +13,7 @@
 
 ## Features
 
-- Auto-click "Fight Again" button
-- Track dropped items in real-time
-- Draggable overlay
-- Keyboard shortcuts
+The script adds an overlay to Pokechill with automation and tracking features. See the in-game overlay for all current options, or check the [script source](pokechill-plus.user.js) for details.
 
 ## Installation
 

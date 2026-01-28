@@ -35,6 +35,11 @@
     let abilityLog = [];
     let lastTrainingPokemon = null;
 
+    // Game Speed
+    let currentSpeed = 1;
+    const SPEED_OPTIONS = [1, 1.5, 2, 3, 4];
+    const DEFAULT_BATTLE_TIMER = 2000;
+
     function log(...args) {
         if (DEBUG) {
             console.log(...args);
@@ -559,17 +564,53 @@
         log('🔄 Everything reset');
     }
 
+    function hasReachedTargetAbility() {
+        if (!abilityHuntEnabled || !targetAbility) return false;
+
+        const areaEndTitle = document.getElementById('area-end-moves-title');
+        if (!areaEndTitle) return false;
+
+        const spans = areaEndTitle.querySelectorAll('span');
+        for (const span of spans) {
+            const text = span.textContent.trim();
+            if (!text.includes(' now has ')) continue;
+
+            const abilityMatch = text.match(/(.+?)\s+now has\s+(.+)!/);
+            if (!abilityMatch) continue;
+
+            const abilityName = abilityMatch[2].trim();
+            const normalizedTarget = targetAbility.toLowerCase().replace(/\s+/g, '');
+            const normalizedAbility = abilityName.toLowerCase().replace(/\s+/g, '');
+
+            if (normalizedAbility === normalizedTarget) {
+                log(`🛑 Target ability "${abilityName}" found, blocking click!`);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     function clickButton() {
         const btn = findButton();
         const buttonExists = !!btn;
 
-        if (btn && isRunning && !lastButtonState) {
-            log('🎯 Click on Fight Again');
-            btn.click();
-            clickCount++;
-            updateUI();
+        if (!btn || !isRunning || lastButtonState) {
+            lastButtonState = buttonExists;
+            return;
         }
 
+        if (hasReachedTargetAbility()) {
+            log('🎯 Ability Hunt: Target reached, stopping');
+            stopAbilityHunt();
+            lastButtonState = buttonExists;
+            return;
+        }
+
+        log('🎯 Click on Fight Again');
+        btn.click();
+        clickCount++;
+        updateUI();
         lastButtonState = buttonExists;
     }
 
@@ -629,6 +670,39 @@
     function toggleDebug() {
         DEBUG = !DEBUG;
         log(`🐛 Debug mode: ${DEBUG ? 'ON' : 'OFF'}`);
+    }
+
+    function setGameSpeed(multiplier) {
+        if (typeof saved === 'undefined') {
+            log('⚠️ Game not ready, cannot change speed');
+            return;
+        }
+
+        currentSpeed = multiplier;
+        saved.overrideBattleTimer = DEFAULT_BATTLE_TIMER / multiplier;
+        updateSpeedUI();
+        log(`⚡ Game speed set to ${multiplier}x (timer: ${saved.overrideBattleTimer}ms)`);
+    }
+
+    function updateSpeedUI() {
+        SPEED_OPTIONS.forEach(speed => {
+            const btn = document.getElementById(`af-speed-${speed}`);
+            if (btn) {
+                if (speed === currentSpeed) {
+                    btn.style.background = '#667eea';
+                    btn.style.color = '#fff';
+                } else {
+                    btn.style.background = 'rgba(255,255,255,0.1)';
+                    btn.style.color = '#ccc';
+                }
+            }
+        });
+
+        const indicator = document.getElementById('af-speed-indicator');
+        if (indicator) {
+            indicator.textContent = `${currentSpeed}x`;
+            indicator.style.color = currentSpeed > 1 ? '#4caf50' : '#667eea';
+        }
     }
 
     // Debug function to simulate an ability roll (call from console: pcPlusSimulateAbility('AbilityName'))
@@ -896,6 +970,28 @@
                 </div>
             </div>
 
+            <div class="pc-section">
+                <div class="pc-section-header" id="section-tweaks-header">
+                    <span id="section-tweaks-arrow">▼</span>
+                    <span>Game Tweaks</span>
+                </div>
+                <div class="pc-section-content" id="section-tweaks-content">
+                    <div style="margin-bottom: 8px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <span style="font-size: 12px; color: #ccc;">Speed</span>
+                            <span id="af-speed-indicator" style="color: #667eea; font-size: 11px;">1x</span>
+                        </div>
+                        <div style="display: flex; gap: 4px;">
+                            <button id="af-speed-1" class="pc-speed-btn">1x</button>
+                            <button id="af-speed-1.5" class="pc-speed-btn">1.5x</button>
+                            <button id="af-speed-2" class="pc-speed-btn">2x</button>
+                            <button id="af-speed-3" class="pc-speed-btn">3x</button>
+                            <button id="af-speed-4" class="pc-speed-btn">4x</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid #333; font-size: 10px; color: #888; text-align: center;">
                 Ctrl+Space: Toggle | Ctrl+D: Debug
             </div>
@@ -911,6 +1007,13 @@
         document.getElementById('af-ability-stop').addEventListener('click', stopAbilityHunt);
         document.getElementById('section-autofight-header').addEventListener('click', () => toggleSection('autofight'));
         document.getElementById('section-display-header').addEventListener('click', () => toggleSection('display'));
+        document.getElementById('section-tweaks-header').addEventListener('click', () => toggleSection('tweaks'));
+
+        // Speed buttons
+        SPEED_OPTIONS.forEach(speed => {
+            document.getElementById(`af-speed-${speed}`).addEventListener('click', () => setGameSpeed(speed));
+        });
+        updateSpeedUI();
 
         makeDraggable(overlay);
 
@@ -968,6 +1071,19 @@
             .pc-item-list::-webkit-scrollbar-track { background: rgba(255,255,255,0.1); border-radius: 3px; }
             .pc-item-list::-webkit-scrollbar-thumb { background: #667eea; border-radius: 3px; }
             #af-status-dot { font-size: 14px; }
+            .pc-speed-btn {
+                flex: 1;
+                padding: 6px 4px;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-weight: bold;
+                font-size: 11px;
+                background: rgba(255,255,255,0.1);
+                color: #ccc;
+                transition: all 0.2s;
+            }
+            .pc-speed-btn:hover { background: rgba(102, 126, 234, 0.5); }
         `;
         const styleEl = document.createElement('style');
         styleEl.textContent = styles;
