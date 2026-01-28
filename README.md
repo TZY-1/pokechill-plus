@@ -8,7 +8,7 @@
   Tampermonkey script for <a href="https://github.com/play-pokechill/play-pokechill.github.io">Pokechill</a> with auto-fight and item tracking.
 </p>
 
-![Version](https://img.shields.io/badge/version-1.3-blue.svg)
+![Version](https://img.shields.io/badge/version-1.4-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 ## Features
