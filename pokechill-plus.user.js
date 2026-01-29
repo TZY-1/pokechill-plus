@@ -37,15 +37,12 @@
             this.uiController = uiController;
             this.itemStats = {};
             this.itemImages = {};
-            this.lastSeenItems = {};
             this.observer = null;
-            this.isTracking = false;
         }
 
         reset() {
             this.itemStats = {};
             this.itemImages = {};
-            this.lastSeenItems = {};
             this.uiController.updateItemDisplay(this.itemStats, this.itemImages);
         }
 
@@ -54,82 +51,118 @@
         }
 
         setupObserver() {
-            const dropsContainer = document.getElementById('explore-drops');
-            if (!dropsContainer) {
-                this.logger.log('⏳ explore-drops not yet available, waiting...');
+            const endList = document.getElementById('area-end-item-list');
+            if (!endList) {
                 setTimeout(() => this.setupObserver(), 1000);
                 return;
             }
 
             if (this.observer) this.observer.disconnect();
 
-            this.logger.log('👀 Item Observer started');
+            this.logger.log('👀 Item Summary Observer started');
             this.observer = new MutationObserver((mutations) => {
-                let itemsChanged = false;
                 mutations.forEach(m => {
-                    if (m.type === 'childList' || m.type === 'characterData') itemsChanged = true;
-                });
-                if (itemsChanged) this.trackItems();
-            });
-
-            this.observer.observe(dropsContainer, {
-                childList: true, subtree: true, characterData: true, attributes: false
-            });
-
-            this.trackItems();
-        }
-
-        captureBaseline() {
-            this.lastSeenItems = {};
-            const dropsContainer = document.getElementById('explore-drops');
-            if (dropsContainer) {
-                dropsContainer.querySelectorAll('.explore-item').forEach(el => {
-                    const itemId = el.getAttribute('data-item');
-                    const countSpan = el.querySelector('span');
-                    if (itemId && countSpan) {
-                        const count = parseInt(countSpan.textContent.trim().replace('x', '')) || 0;
-                        this.lastSeenItems[itemId] = count;
+                    if (m.type === 'childList') {
+                        m.addedNodes.forEach(node => {
+                            if (node.nodeType === 1 && node.classList.contains('area-end-item')) {
+                                this.processItemNode(node);
+                            }
+                        });
                     }
                 });
-                this.logger.log('📸 Baseline captured:', this.lastSeenItems);
-            }
+            });
+
+            this.observer.observe(endList, { childList: true });
         }
 
-        trackItems() {
-            if (!this.isTracking) return;
+        processItemNode(node) {
+            const itemId = node.getAttribute('data-item');
+            const img = node.querySelector('img');
+            const span = node.querySelector('span');
 
-            const dropsContainer = document.getElementById('explore-drops');
-            if (!dropsContainer) return;
-
-            const currentItems = {};
-            dropsContainer.querySelectorAll('.explore-item').forEach(el => {
-                const itemId = el.getAttribute('data-item');
-                const countSpan = el.querySelector('span');
-                const img = el.querySelector('img');
-
-                if (itemId && countSpan) {
-                    const currentCount = parseInt(countSpan.textContent.trim().replace('x', '')) || 0;
-                    currentItems[itemId] = currentCount;
+            if (itemId && span) {
+                // Format is "+X"
+                const count = parseInt(span.textContent.replace('+', '')) || 0;
+                if (count > 0) {
+                    this.itemStats[itemId] = (this.itemStats[itemId] || 0) + count;
                     if (img && img.src && !this.itemImages[itemId]) {
                         this.itemImages[itemId] = img.src;
                     }
+                    this.logger.log(`➕ Item tracked: ${itemId} +${count}`);
+                    this.uiController.updateItemDisplay(this.itemStats, this.itemImages);
                 }
+            }
+        }
+    }
+
+    class PokemonTracker {
+        constructor(logger, uiController) {
+            this.logger = logger;
+            this.uiController = uiController;
+            this.pkmnStats = {}; // { id: { count: 0, new: 0, shiny: 0, ivs: 0 } }
+            this.pkmnImages = {};
+            this.observer = null;
+        }
+
+        reset() {
+            this.pkmnStats = {};
+            this.pkmnImages = {};
+            this.uiController.updatePokemonDisplay(this.pkmnStats, this.pkmnImages);
+        }
+
+        start() {
+            this.setupObserver();
+        }
+
+        setupObserver() {
+            const pkmnList = document.getElementById('area-end-pkmn-list');
+            if (!pkmnList) {
+                setTimeout(() => this.setupObserver(), 1000);
+                return;
+            }
+
+            if (this.observer) this.observer.disconnect();
+
+            this.logger.log('👀 Pokemon Summary Observer started');
+            this.observer = new MutationObserver((mutations) => {
+                mutations.forEach(m => {
+                    if (m.type === 'childList') {
+                        m.addedNodes.forEach(node => {
+                            if (node.nodeType === 1 && node.getAttribute('data-pkmn-editor')) {
+                                this.processPkmnNode(node);
+                            }
+                        });
+                    }
+                });
             });
 
-            // Diff
-            Object.keys(currentItems).forEach(itemId => {
-                const currentCount = currentItems[itemId];
-                const lastCount = this.lastSeenItems[itemId] || 0;
-                const diff = currentCount - lastCount;
+            this.observer.observe(pkmnList, { childList: true });
+        }
 
-                if (diff > 0) {
-                    this.logger.log(`  ➕ ${itemId}: +${diff} (${lastCount} -> ${currentCount})`);
-                    this.itemStats[itemId] = (this.itemStats[itemId] || 0) + diff;
+        processPkmnNode(node) {
+            const pkmnId = node.getAttribute('data-pkmn-editor');
+            const img = node.querySelector('img');
+            const span = node.querySelector('span');
+            const tag = span ? span.textContent.trim() : null;
+
+            if (pkmnId) {
+                if (!this.pkmnStats[pkmnId]) {
+                    this.pkmnStats[pkmnId] = { count: 0, new: 0, shiny: 0, ivs: 0 };
                 }
-            });
 
-            this.lastSeenItems = { ...currentItems };
-            this.uiController.updateItemDisplay(this.itemStats, this.itemImages);
+                this.pkmnStats[pkmnId].count++;
+
+                if (tag === 'New!') this.pkmnStats[pkmnId].new++;
+                else if (tag === '✦Shiny✦!' || tag?.includes('Shiny')) this.pkmnStats[pkmnId].shiny++;
+                else if (tag === "Iv's Up!") this.pkmnStats[pkmnId].ivs++;
+
+                if (img && img.src && !this.pkmnImages[pkmnId]) {
+                    this.pkmnImages[pkmnId] = img.src;
+                }
+
+                this.logger.log(`🐾 Pokemon tracked: ${pkmnId} (${tag || 'Standard'})`);
+                this.uiController.updatePokemonDisplay(this.pkmnStats, this.pkmnImages);
+            }
         }
     }
 
@@ -482,8 +515,6 @@
             if (this.isRunning) return;
             this.isRunning = true;
             this.interval = setInterval(() => this.tick(), 250);
-            this.itemTracker.isTracking = true;
-            this.itemTracker.captureBaseline();
             this.uiController.updateAutoFightStatus(true);
             this.logger.log('▶️ Auto-Fight started');
         }
@@ -494,8 +525,6 @@
             if (this.interval) clearInterval(this.interval);
             this.interval = null;
             this.lastButtonState = false;
-
-            this.itemTracker.isTracking = false;
 
             // Also stop ability hunt if running
             if (this.abilityHunter.enabled) {
@@ -600,6 +629,11 @@
                 <div style="border-top: 1px solid #444; padding-top: 10px;">
                     <div style="font-size: 12px; color: #667eea; margin-bottom: 6px;">📦 Collected Items</div>
                     <div id="af-item-list" class="pc-item-list"><div class="empty-list">No items collected</div></div>
+                </div>
+                <!-- Pokemon -->
+                <div style="border-top: 1px solid #444; padding-top: 10px; margin-top: 10px;">
+                    <div style="font-size: 12px; color: #69df96; margin-bottom: 6px;">🐾 Gathered Pokemons</div>
+                    <div id="af-pkmn-list" class="pc-item-list"><div class="empty-list">No pokemon gathered</div></div>
                 </div>
                 <!-- IVs -->
                 <div style="border-top: 1px solid #444; padding-top: 10px; margin-top: 10px;">
@@ -720,6 +754,33 @@
                     <span style="color: #ffc107; font-weight: bold;">x${count}</span>
                 </div>
              `).join('');
+        }
+
+        updatePokemonDisplay(stats, images) {
+            const list = document.getElementById('af-pkmn-list');
+            if (!list) return;
+            const sorted = Object.entries(stats).sort((a, b) => b[1].count - a[1].count);
+            if (sorted.length === 0) { list.innerHTML = '<div class="empty-list">No pokemon gathered</div>'; return; }
+
+            list.innerHTML = sorted.map(([id, data]) => {
+                const tags = [];
+                if (data.new > 0) tags.push(`<span style="color:#69df96; font-size:9px;">NEW! x${data.new}</span>`);
+                if (data.shiny > 0) tags.push(`<span style="color:#ffc107; font-size:9px;">SHINY! x${data.shiny}</span>`);
+                if (data.ivs > 0) tags.push(`<span style="color:#a78bfa; font-size:9px;">IVs UP! x${data.ivs}</span>`);
+
+                const name = id.charAt(0).toUpperCase() + id.slice(1).replace(/([A-Z])/g, ' $1');
+
+                return `
+                <div style="margin: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 5px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
+                        <span style="color: #fff; display: flex; align-items: center;">
+                            ${images[id] ? `<img src="${images[id]}" style="width:24px;height:24px;margin-right:6px;filter:drop-shadow(0 0 2px rgba(0,0,0,0.5));">` : ''}${name}
+                        </span>
+                        <span style="color: #69df96; font-weight: bold;">x${data.count}</span>
+                    </div>
+                    ${tags.length > 0 ? `<div style="display: flex; gap: 6px; margin-top: 2px; margin-left: 30px;">${tags.join('')}</div>` : ''}
+                </div>`;
+            }).join('');
         }
 
         updateIvDisplay(stats) {
@@ -1053,6 +1114,7 @@
             // Services with Dependencies
             this.abilityHunter = new AbilityHunter(this.logger, this.ui);
             this.itemTracker = new ItemTracker(this.logger, this.ui);
+            this.pokemonTracker = new PokemonTracker(this.logger, this.ui);
             this.trainingMonitor = new TrainingMonitor(this.logger, this.ui, this.abilityHunter);
             this.hpDisplay = new HPDisplay(this.logger);
             this.typeDisplay = new MoveEffectivenessDisplay(this.logger);
@@ -1083,6 +1145,7 @@
             // Start Observers (that don't depend on "Run" state being true, but just general monitoring)
             this.trainingMonitor.start();
             this.itemTracker.start();
+            this.pokemonTracker.start();
 
             setInterval(() => this.abilityHunter.onTick(), 500);
 
@@ -1111,6 +1174,7 @@
         resetAll() {
             this.battler.reset();
             this.itemTracker.reset();
+            this.pokemonTracker.reset();
             this.trainingMonitor.reset();
             this.abilityHunter.reset();
             this.logger.log('🔄 All Stats Reset');
