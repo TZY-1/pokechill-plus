@@ -529,7 +529,6 @@
                 return;
             }
 
-            // Check Ability Hunt Stop Condition
             if (this.abilityHunter.hasReachedTarget()) {
                 this.logger.log('🎯 Ability Hunt: Target reached, stopping');
                 this.abilityHunter.stopHunt();
@@ -556,7 +555,8 @@
                 onAbilityHuntStart: () => { },
                 onAbilityHuntStop: () => { },
                 onSpeedChange: () => { },
-                onHpToggle: () => { }
+                onHpToggle: () => { },
+                onTypeToggle: () => { }
             };
         }
 
@@ -578,7 +578,7 @@
             `;
 
             this.overlay.innerHTML = `
-                <div style="font-weight: bold; margin-bottom: 12px; font-size: 16px; color: #667eea; text-align: center;">⚡ Pokechill Plus (C# Edition)</div>
+                <div style="font-weight: bold; margin-bottom: 12px; font-size: 16px; color: #667eea; text-align: center;">⚡ Pokechill Plus</div>
                 ${this.renderSection('autofight', 'Auto-Fight', true)}
                 ${this.renderSection('display', 'Display Options')}
                 ${this.renderSection('tweaks', 'Game Tweaks')}
@@ -637,6 +637,10 @@
                     <input type="checkbox" id="af-hp-toggle">
                     <span>Show HP Values</span>
                 </label>
+                <label class="pc-checkbox-label" style="margin-top: 5px;">
+                    <input type="checkbox" id="af-type-toggle">
+                    <span>Show Type Effectiveness</span>
+                </label>
             `;
 
             document.getElementById('section-tweaks-content').innerHTML = `
@@ -669,6 +673,7 @@
             document.getElementById('af-stop-btn').addEventListener('click', this.callbacks.onStop);
             document.getElementById('af-reset-btn').addEventListener('click', this.callbacks.onReset);
             document.getElementById('af-hp-toggle').addEventListener('change', (e) => this.callbacks.onHpToggle(e.target.checked));
+            document.getElementById('af-type-toggle').addEventListener('change', (e) => this.callbacks.onTypeToggle(e.target.checked));
             document.getElementById('af-ability-start').addEventListener('click', () => {
                 const select = document.getElementById('af-ability-select');
                 this.callbacks.onAbilityHuntStart(select.value);
@@ -868,6 +873,176 @@
         }
     }
 
+    class MoveEffectivenessDisplay {
+        constructor(logger) {
+            this.logger = logger;
+            this.active = false;
+            this.observer = null;
+            this.interval = null;
+        }
+
+        toggle(active) {
+            this.active = active;
+            if (this.active) {
+                this.start();
+            } else {
+                this.stop();
+            }
+        }
+
+        start() {
+            if (this.observer) return;
+            this.logger.log('🛡️ Type Effectiveness Display started');
+
+            // Observer for move button creation/updates
+            this.observer = new MutationObserver((mutations) => {
+                let shouldUpdate = false;
+                for (const m of mutations) {
+                    // Ignore our own indicators
+                    if (m.target.classList && m.target.classList.contains('pc-type-indicator')) continue;
+                    if (m.target.closest && m.target.closest('.pc-type-indicator')) continue;
+
+                    if (m.type === 'childList') {
+                        // Check if added nodes are NOT our indicators
+                        for (const node of m.addedNodes) {
+                            if (node.nodeType === 1 && !node.classList.contains('pc-type-indicator') && !node.querySelector('.pc-type-indicator')) {
+                                shouldUpdate = true;
+                                break;
+                            }
+                        }
+                    }
+                    // Updates on style or class might indicate new move loaded
+                    else if (m.type === 'attributes' && (m.attributeName === 'style' || m.attributeName === 'class')) {
+                        // Ignore if target is our indicator (handled above by target check, but double check)
+                        if (!m.target.classList.contains('pc-type-indicator')) {
+                            shouldUpdate = true;
+                        }
+                    }
+
+                    if (shouldUpdate) break;
+                }
+                if (shouldUpdate) this.updateEffectiveness();
+            });
+
+            // Observe a broad container as move boxes are dynamically created/destroyed often
+            // Ideally we find a stable container. 'explore-bot' or 'team-menu' might contain them.
+            // For safety, document.body but filtered.
+            this.observer.observe(document.body, {
+                childList: true,
+                subtree: true,
+                attributes: true,
+                attributeFilter: ['style', 'class', 'data-move']
+            });
+
+            // Fallback interval just in case
+            this.interval = setInterval(() => this.updateEffectiveness(), 1000);
+
+            this.updateEffectiveness();
+        }
+
+        stop() {
+            if (this.observer) {
+                this.observer.disconnect();
+                this.observer = null;
+            }
+            if (this.interval) {
+                clearInterval(this.interval);
+                this.interval = null;
+            }
+            // Cleanup existing indicators
+            document.querySelectorAll('.pc-type-indicator').forEach(el => el.remove());
+        }
+
+        updateEffectiveness() {
+            if (!this.active) return;
+
+            if (typeof typeEffectiveness === 'undefined' || typeof saved === 'undefined' || typeof pkmn === 'undefined' || typeof move === 'undefined') {
+                return;
+            }
+
+            const currentOpponentId = saved.currentPkmn;
+            if (!currentOpponentId || !pkmn[currentOpponentId]) return;
+
+            const opponentTypes = pkmn[currentOpponentId].type; // Expecting array e.g. ["fire", "flying"]
+            if (!opponentTypes) return;
+
+            // Process all move buttons and filter for player moves
+            document.querySelectorAll('.pkmn-movebox').forEach(box => {
+                if (!box.id.includes('team')) return;
+
+                const moveId = box.dataset.move;
+                if (!moveId || !move[moveId]) return;
+
+                const moveType = move[moveId].type;
+                if (!moveType) return;
+
+                // Calculate effectiveness using the game's internal chart
+                let effectiveness = typeEffectiveness(moveType, opponentTypes);
+                if (effectiveness === undefined || effectiveness === null) effectiveness = 1;
+
+                this.appendIndicator(box, effectiveness);
+            });
+        }
+
+        appendIndicator(box, multiplier) {
+            let indicator = box.querySelector('.pc-type-indicator');
+            const typeImg = box.querySelector('img');
+
+            if (!indicator) {
+                indicator = document.createElement('div');
+                indicator.className = 'pc-type-indicator';
+                indicator.style.cssText = `
+                    position: absolute;
+                    right: 2.2rem;
+                    top: 50%;
+                    transform: translateY(-50%);
+                    font-size: 10px;
+                    font-weight: bold;
+                    padding: 2px 4px;
+                    border-radius: 4px;
+                    background: rgba(0,0,0,0.8);
+                    z-index: 3;
+                    white-space: nowrap;
+                    line-height: normal;
+                `;
+
+                if (typeImg) {
+                    box.insertBefore(indicator, typeImg);
+                } else {
+                    box.appendChild(indicator);
+                }
+            } else {
+                if (typeImg && indicator.nextSibling !== typeImg) {
+                    box.insertBefore(indicator, typeImg);
+                }
+                indicator.style.position = 'absolute';
+                indicator.style.right = '2.2rem';
+                indicator.style.top = '50%';
+                indicator.style.transform = 'translateY(-50%)';
+                indicator.style.marginLeft = '';
+            }
+
+            if (multiplier > 1.0) {
+                indicator.textContent = `▲ x${multiplier}`;
+                indicator.style.color = '#4caf50'; // Green
+                indicator.style.display = 'inline-block';
+            } else if (multiplier == 0) {
+                indicator.textContent = `x0`;
+                indicator.style.color = '#9e9e9e'; // Grey
+                indicator.style.display = 'inline-block';
+            } else if (multiplier < 1.0) {
+                indicator.textContent = `▼ x${multiplier}`;
+                indicator.style.color = '#f44336'; // Red
+                indicator.style.display = 'inline-block';
+            } else {
+                // Neutral x1
+                indicator.textContent = `▬ x${multiplier}`;
+                indicator.style.color = '#ffffff'; // White
+                indicator.style.display = 'inline-block';
+            }
+        }
+    }
+
     // --- Main Application ---
 
     class PokechillPlus {
@@ -880,6 +1055,7 @@
             this.itemTracker = new ItemTracker(this.logger, this.ui);
             this.trainingMonitor = new TrainingMonitor(this.logger, this.ui, this.abilityHunter);
             this.hpDisplay = new HPDisplay(this.logger);
+            this.typeDisplay = new MoveEffectivenessDisplay(this.logger);
             this.speedController = new GameSpeedController(this.logger);
 
             this.battler = new AutoBattler(this.logger, this.ui, this.itemTracker, this.abilityHunter);
@@ -893,21 +1069,21 @@
                 onReset: () => this.resetAll(),
                 onAbilityHuntStart: (ability) => {
                     this.abilityHunter.startHunt(ability);
-                    this.battler.start(); // Auto-start battling when hunt starts
+                    this.battler.start();
                 },
                 onAbilityHuntStop: () => {
                     this.abilityHunter.stopHunt();
                     this.battler.stop();
                 },
                 onSpeedChange: (speed) => this.speedController.setSpeed(speed),
-                onHpToggle: (show) => this.hpDisplay.toggle(show)
+                onHpToggle: (show) => this.hpDisplay.toggle(show),
+                onTypeToggle: (show) => this.typeDisplay.toggle(show)
             });
 
             // Start Observers (that don't depend on "Run" state being true, but just general monitoring)
             this.trainingMonitor.start();
             this.itemTracker.start();
 
-            // Additional Loops
             setInterval(() => this.abilityHunter.onTick(), 500);
 
             // Global Shortcuts
