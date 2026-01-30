@@ -530,13 +530,18 @@
             this.clickCount = 0;
             this.interval = null;
             this.lastButtonState = false;
+            this.startTime = null;
+            this.timerInterval = null;
         }
 
         start() {
             if (this.isRunning) return;
             this.isRunning = true;
+            this.startTime = Date.now();
             this.interval = setInterval(() => this.tick(), 250);
+            this.timerInterval = setInterval(() => this.updateTimer(), 1000);
             this.uiController.updateAutoFightStatus(true);
+            this.updateTimer();
             this.logger.log('▶️ Auto-Fight started');
         }
 
@@ -544,7 +549,9 @@
             if (!this.isRunning) return;
             this.isRunning = false;
             if (this.interval) clearInterval(this.interval);
+            if (this.timerInterval) clearInterval(this.timerInterval);
             this.interval = null;
+            this.timerInterval = null;
             this.lastButtonState = false;
 
             // Also stop ability hunt if running
@@ -562,7 +569,19 @@
 
         reset() {
             this.clickCount = 0;
+            this.startTime = this.isRunning ? Date.now() : null;
             this.uiController.updateClickCount(0);
+            this.uiController.updateTimer('00:00:00');
+        }
+
+        updateTimer() {
+            if (!this.startTime) return;
+            const elapsed = Math.floor((Date.now() - this.startTime) / 1000);
+            const hours = Math.floor(elapsed / 3600);
+            const minutes = Math.floor((elapsed % 3600) / 60);
+            const seconds = elapsed % 60;
+            const timeString = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            this.uiController.updateTimer(timeString);
         }
 
         findButton() {
@@ -623,7 +642,8 @@
             this.overlay.style.cssText = `
                 position: fixed; top: 10px; right: 10px; background: rgba(0, 0, 0, 0.95);
                 color: #fff; padding: 15px; border-radius: 10px; font-family: Arial, sans-serif;
-                font-size: 13px; z-index: 999999; min-width: 250px; max-width: 350px;
+                font-size: 13px; z-index: 999999; min-width: 300px; max-width: 400px;
+                max-height: 850px; overflow-y: auto;
                 box-shadow: 0 4px 20px rgba(0,0,0,0.5); border: 2px solid #667eea;
             `;
 
@@ -717,7 +737,7 @@
                 <div class="pc-section-header" id="section-${id}-header">
                     <span id="section-${id}-arrow">${open ? '▼' : '▶'}</span>
                     <span>${title}</span>
-                    ${id === 'autofight' ? '<span id="af-status-dot" style="margin-left: auto;">○</span>' : ''}
+                    ${id === 'autofight' ? '<div style="margin-left: auto; display: flex; align-items: center; gap: 8px;"><span id="af-timer" style="display: none; font-size: 11px; color: #888; font-family: monospace;">00:00:00</span><span id="af-status-dot">○</span></div>' : ''}
                 </div>
                 <div class="pc-section-content" id="section-${id}-content" style="display: ${open ? 'block' : 'none'};"></div>
             </div>`;
@@ -752,11 +772,21 @@
 
         updateAutoFightStatus(isRunning) {
             const dot = document.getElementById('af-status-dot');
+            const timer = document.getElementById('af-timer');
             const startBtn = document.getElementById('af-start-btn');
             const stopBtn = document.getElementById('af-stop-btn');
             if (dot) { dot.style.color = isRunning ? '#4caf50' : '#888'; dot.textContent = isRunning ? '●' : '○'; }
+            if (timer) {
+                timer.style.color = isRunning ? '#4caf50' : '#888';
+                timer.style.display = isRunning ? 'inline' : 'none';
+            }
             if (startBtn) startBtn.style.display = isRunning ? 'none' : 'block';
             if (stopBtn) stopBtn.style.display = isRunning ? 'block' : 'none';
+        }
+
+        updateTimer(timeString) {
+            const timer = document.getElementById('af-timer');
+            if (timer) timer.textContent = timeString;
         }
 
         updateClickCount(count) {
@@ -926,6 +956,9 @@
                 .pc-item-list { max-height: 120px; overflow-y: auto; background: rgba(255,255,255,0.05); padding: 8px; border-radius: 5px; }
                 .pc-item-list::-webkit-scrollbar { width: 6px; }
                 .pc-item-list::-webkit-scrollbar-thumb { background: #667eea; border-radius: 3px; }
+                #pokechill-overlay::-webkit-scrollbar { width: 8px; }
+                #pokechill-overlay::-webkit-scrollbar-thumb { background: #667eea; border-radius: 4px; }
+                #pokechill-overlay::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); border-radius: 4px; }
                 .empty-list { color: #888; font-size: 11px; text-align: center; }
                 .pc-speed-btn { flex: 1; padding: 6px 4px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 11px; transition: all 0.2s; }
                 .pc-checkbox-label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px; }
