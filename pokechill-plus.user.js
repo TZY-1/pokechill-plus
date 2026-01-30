@@ -271,13 +271,31 @@
             this.targetAbility = '';
             this.abilityLog = [];
             this.lastTrainingPokemon = null;
+            this.onTargetFound = null;
+        }
 
-            // Bind UI events later or expose methods
+        getAbilityRarity(abilityName) {
+            if (typeof ability === 'undefined') return 1;
+            const normName = abilityName.toLowerCase().replace(/\s+/g, '');
+            for (const [key, ab] of Object.entries(ability)) {
+                if (key.toLowerCase() === normName) return ab.rarity || 1;
+            }
+            return 1;
+        }
+
+        getAbilityColor(abilityName) {
+            const rarity = this.getAbilityRarity(abilityName);
+            switch (rarity) {
+                case 1: return '#888';    // Common = gray
+                case 2: return '#69df96'; // Uncommon = green
+                case 3: return '#64b5f6'; // Rare = light blue
+                default: return '#888';
+            }
         }
 
         reset() {
             this.abilityLog = [];
-            this.uiController.updateAbilityDisplay(this.abilityLog, this.targetAbility);
+            this.uiController.updateAbilityDisplay(this.abilityLog, this.targetAbility, this);
         }
 
         onTick() {
@@ -312,7 +330,7 @@
         registerAbility(pokemonName, abilityName) {
             this.abilityLog.unshift({ pokemon: pokemonName, ability: abilityName, time: new Date() });
             if (this.abilityLog.length > 50) this.abilityLog.pop();
-            this.uiController.updateAbilityDisplay(this.abilityLog, this.targetAbility);
+            this.uiController.updateAbilityDisplay(this.abilityLog, this.targetAbility, this);
 
             if (this.enabled && this.targetAbility) {
                 const normTarget = this.targetAbility.toLowerCase().replace(/\s+/g, '');
@@ -321,6 +339,7 @@
                 if (normAbility === normTarget) {
                     this.logger.log(`🎉 Target ability "${abilityName}" found!`);
                     this.stopHunt();
+                    if (this.onTargetFound) this.onTargetFound();
                     return true; // Signal target found
                 }
             }
@@ -348,6 +367,8 @@
 
                 if (normAbility === normTarget) {
                     this.logger.log(`🛑 Target ability "${abilityName}" found (DOM check), blocking click!`);
+                    this.stopHunt();
+                    if (this.onTargetFound) this.onTargetFound();
                     return true;
                 }
             }
@@ -820,7 +841,7 @@
             if (select) select.disabled = enabled;
         }
 
-        updateAbilityDisplay(log, target) {
+        updateAbilityDisplay(log, target, hunter) {
             const list = document.getElementById('af-ability-log');
             if (!list) return;
             if (log.length === 0) { list.innerHTML = '<div class="empty-list">No abilities rolled</div>'; return; }
@@ -829,10 +850,12 @@
             list.innerHTML = log.slice(0, 20).map(entry => {
                 const normAbility = entry.ability.toLowerCase().replace(/\s+/g, '');
                 const isTarget = normTarget && normAbility === normTarget;
+                const color = hunter ? hunter.getAbilityColor(entry.ability) : '#888';
+                const targetStyle = isTarget ? 'font-weight: bold; text-shadow: 0 0 5px currentColor; filter: brightness(1.2);' : '';
                 return `
                 <div style="display: flex; justify-content: space-between; align-items: center; margin: 3px 0; font-size: 10px;">
                     <span style="color: #ccc;">${entry.pokemon}</span>
-                    <span style="color: #888; ${isTarget ? 'color: #69df96; font-weight: bold;' : ''}">${entry.ability}</span>
+                    <span style="color: ${color}; ${targetStyle}">${entry.ability}</span>
                 </div>`;
             }).join('');
         }
@@ -1121,6 +1144,8 @@
             this.speedController = new GameSpeedController(this.logger);
 
             this.battler = new AutoBattler(this.logger, this.ui, this.itemTracker, this.abilityHunter);
+
+            this.abilityHunter.onTargetFound = () => this.battler.stop();
         }
 
         init() {
