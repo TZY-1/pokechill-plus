@@ -614,6 +614,143 @@
         }
     }
 
+    class PopUpController {
+        constructor(uiController) {
+            this.uiController = uiController;
+            this.popupWindow = null;
+            this.isPopupMode = false;
+        }
+
+        openPopup() {
+            if (this.popupWindow && !this.popupWindow.closed) {
+                this.popupWindow.focus();
+                return true;
+            }
+
+            // Open popup window
+            this.popupWindow = window.open('', 'PokechillPlus', 'width=420,height=870,scrollbars=no,resizable=yes');
+            if (!this.popupWindow) {
+                alert('Pop-Up blocked! Please allow pop-ups for this site.');
+                return false;
+            }
+
+            // Setup popup document
+            this.popupWindow.document.write(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>⚡ Pokechill Plus</title>
+                    <meta charset="UTF-8">
+                    <style>
+                        body {
+                            margin: 0;
+                            padding: 10px;
+                            background: #1a1a1a;
+                            font-family: Arial, sans-serif;
+                        }
+                        * { box-sizing: border-box; }
+                    </style>
+                </head>
+                <body></body>
+                </html>
+            `);
+            this.popupWindow.document.close();
+
+            // Copy all styles to popup (including fonts)
+            const styles = document.querySelectorAll('style, link[rel="stylesheet"]');
+            styles.forEach(style => {
+                if (style.tagName === 'LINK') {
+                    const newLink = this.popupWindow.document.createElement('link');
+                    newLink.rel = 'stylesheet';
+                    newLink.href = style.href;
+                    this.popupWindow.document.head.appendChild(newLink);
+                } else {
+                    const newStyle = this.popupWindow.document.createElement('style');
+                    newStyle.textContent = style.textContent;
+                    this.popupWindow.document.head.appendChild(newStyle);
+                }
+            });
+
+            // Move overlay to popup
+            const overlay = this.uiController.overlay;
+            if (overlay) {
+                // Store original event listeners data before moving
+                this.originalOnMouseDown = overlay.onmousedown;
+
+                // Disable draggable in popup
+                overlay.onmousedown = null;
+
+                // Reset position styles for popup
+                overlay.style.position = 'relative';
+                overlay.style.top = '0';
+                overlay.style.right = 'auto';
+                overlay.style.left = '0';
+                overlay.style.margin = '0';
+                overlay.style.maxHeight = 'none';
+
+                this.popupWindow.document.body.appendChild(overlay);
+
+                // Re-attach event listeners in popup context
+                this.uiController.attachEventListeners();
+            }
+
+            // Handle popup close
+            this.popupWindow.addEventListener('beforeunload', () => {
+                this.closePopup(true);
+            });
+
+            this.isPopupMode = true;
+            return true;
+        }
+
+        closePopup(fromPopup = false) {
+            if (!this.isPopupMode) return;
+
+            // Move overlay back to main window
+            const overlay = this.uiController.overlay;
+            if (overlay) {
+                // Restore position styles
+                overlay.style.position = 'fixed';
+                overlay.style.top = '10px';
+                overlay.style.right = '10px';
+                overlay.style.left = 'auto';
+                overlay.style.margin = '';
+                overlay.style.maxHeight = '850px';
+
+                // Re-enable draggable
+                this.uiController.makeDraggable(overlay);
+
+                // Move back to main document
+                document.body.appendChild(overlay);
+
+                // Re-attach event listeners in main window context
+                this.uiController.attachEventListeners();
+            }
+
+            // Close popup if not already closed
+            if (this.popupWindow && !this.popupWindow.closed) {
+                this.popupWindow.close();
+            }
+            this.popupWindow = null;
+            this.isPopupMode = false;
+
+            // Uncheck checkbox if closed from popup
+            if (fromPopup) {
+                const checkbox = document.getElementById('af-popup-toggle');
+                if (checkbox) checkbox.checked = false;
+            }
+        }
+
+        toggle(enabled) {
+            if (enabled) {
+                return this.openPopup();
+            } else {
+                this.closePopup();
+                return true;
+            }
+        }
+    }
+
     class UIController {
         constructor() {
             this.overlay = null;
@@ -625,7 +762,8 @@
                 onAbilityHuntStop: () => { },
                 onSpeedChange: () => { },
                 onHpToggle: () => { },
-                onTypeToggle: () => { }
+                onTypeToggle: () => { },
+                onPopupToggle: () => { }
             };
         }
 
@@ -716,6 +854,10 @@
                     <input type="checkbox" id="af-type-toggle">
                     <span>Show Type Effectiveness</span>
                 </label>
+                <label class="pc-checkbox-label" style="margin-top: 5px;">
+                    <input type="checkbox" id="af-popup-toggle">
+                    <span>Open in Pop-Up Window</span>
+                </label>
             `;
 
             document.getElementById('section-tweaks-content').innerHTML = `
@@ -744,37 +886,64 @@
         }
 
         attachEventListeners() {
-            document.getElementById('af-start-btn').addEventListener('click', this.callbacks.onStart);
-            document.getElementById('af-stop-btn').addEventListener('click', this.callbacks.onStop);
-            document.getElementById('af-reset-btn').addEventListener('click', this.callbacks.onReset);
-            document.getElementById('af-hp-toggle').addEventListener('change', (e) => this.callbacks.onHpToggle(e.target.checked));
-            document.getElementById('af-type-toggle').addEventListener('change', (e) => this.callbacks.onTypeToggle(e.target.checked));
-            document.getElementById('af-ability-start').addEventListener('click', () => {
-                const select = document.getElementById('af-ability-select');
-                this.callbacks.onAbilityHuntStart(select.value);
-            });
-            document.getElementById('af-ability-stop').addEventListener('click', this.callbacks.onAbilityHuntStop);
+            // Remove old event listener if exists
+            if (this.overlayClickHandler) {
+                this.overlay.removeEventListener('click', this.overlayClickHandler);
+            }
 
-            ['autofight', 'display', 'tweaks'].forEach(id => {
-                document.getElementById(`section-${id}-header`).addEventListener('click', () => this.toggleSection(id));
-            });
+            // Event delegation: single listener on overlay
+            this.overlayClickHandler = (e) => {
+                const target = e.target;
 
-            document.querySelectorAll('.pc-speed-btn').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    const speed = parseFloat(btn.dataset.speed);
+                // Button clicks
+                if (target.id === 'af-start-btn') this.callbacks.onStart();
+                else if (target.id === 'af-stop-btn') this.callbacks.onStop();
+                else if (target.id === 'af-reset-btn') this.callbacks.onReset();
+                else if (target.id === 'af-ability-start') {
+                    const select = this.overlay.querySelector('#af-ability-select');
+                    this.callbacks.onAbilityHuntStart(select?.value);
+                }
+                else if (target.id === 'af-ability-stop') this.callbacks.onAbilityHuntStop();
+
+                // Speed buttons
+                else if (target.classList.contains('pc-speed-btn')) {
+                    const speed = parseFloat(target.dataset.speed);
                     this.callbacks.onSpeedChange(speed);
                     this.updateSpeedUI(speed);
-                });
-            });
+                }
+
+                // Section headers (check if target or parent is section header)
+                else if (target.classList.contains('pc-section-header') || target.closest('.pc-section-header')) {
+                    const header = target.classList.contains('pc-section-header') ? target : target.closest('.pc-section-header');
+                    const id = header.id.replace('section-', '').replace('-header', '');
+                    this.toggleSection(id);
+                }
+            };
+
+            this.overlay.addEventListener('click', this.overlayClickHandler);
+
+            // Checkboxes need change event
+            if (this.overlayChangeHandler) {
+                this.overlay.removeEventListener('change', this.overlayChangeHandler);
+            }
+
+            this.overlayChangeHandler = (e) => {
+                const target = e.target;
+                if (target.id === 'af-hp-toggle') this.callbacks.onHpToggle(target.checked);
+                else if (target.id === 'af-type-toggle') this.callbacks.onTypeToggle(target.checked);
+                else if (target.id === 'af-popup-toggle') this.callbacks.onPopupToggle(target.checked);
+            };
+
+            this.overlay.addEventListener('change', this.overlayChangeHandler);
 
             this.updateSpeedUI(1);
         }
 
         updateAutoFightStatus(isRunning) {
-            const dot = document.getElementById('af-status-dot');
-            const timer = document.getElementById('af-timer');
-            const startBtn = document.getElementById('af-start-btn');
-            const stopBtn = document.getElementById('af-stop-btn');
+            const dot = this.overlay.querySelector('#af-status-dot');
+            const timer = this.overlay.querySelector('#af-timer');
+            const startBtn = this.overlay.querySelector('#af-start-btn');
+            const stopBtn = this.overlay.querySelector('#af-stop-btn');
             if (dot) { dot.style.color = isRunning ? '#4caf50' : '#888'; dot.textContent = isRunning ? '●' : '○'; }
             if (timer) {
                 timer.style.color = isRunning ? '#4caf50' : '#888';
@@ -785,17 +954,17 @@
         }
 
         updateTimer(timeString) {
-            const timer = document.getElementById('af-timer');
+            const timer = this.overlay.querySelector('#af-timer');
             if (timer) timer.textContent = timeString;
         }
 
         updateClickCount(count) {
-            const el = document.getElementById('af-click-count');
+            const el = this.overlay.querySelector('#af-click-count');
             if (el) el.textContent = count;
         }
 
         updateItemDisplay(stats, images) {
-            const list = document.getElementById('af-item-list');
+            const list = this.overlay.querySelector('#af-item-list');
             if (!list) return;
             const sorted = Object.entries(stats).sort((a, b) => b[1] - a[1]);
             if (sorted.length === 0) { list.innerHTML = '<div class="empty-list">No items collected</div>'; return; }
@@ -808,7 +977,7 @@
         }
 
         updatePokemonDisplay(stats, images) {
-            const list = document.getElementById('af-pkmn-list');
+            const list = this.overlay.querySelector('#af-pkmn-list');
             if (!list) return;
             const sorted = Object.entries(stats).sort((a, b) => b[1].count - a[1].count);
             if (sorted.length === 0) { list.innerHTML = '<div class="empty-list">No pokemon gathered</div>'; return; }
@@ -835,7 +1004,7 @@
         }
 
         updateIvDisplay(stats) {
-            const list = document.getElementById('af-iv-list');
+            const list = this.overlay.querySelector('#af-iv-list');
             if (!list) return;
             const sorted = Object.entries(stats).sort((a, b) => b[1] - a[1]);
             if (sorted.length === 0) { list.innerHTML = '<div class="empty-list">No IVs gained</div>'; return; }
@@ -848,7 +1017,7 @@
         }
 
         updateMoveDisplay(stats) {
-            const list = document.getElementById('af-move-list');
+            const list = this.overlay.querySelector('#af-move-list');
             if (!list) return;
             const sorted = Object.keys(stats).sort((a, b) => stats[b].length - stats[a].length);
             if (sorted.length === 0) { list.innerHTML = '<div class="empty-list">No moves learned</div>'; return; }
@@ -861,10 +1030,10 @@
         }
 
         updateAbilityHuntUI(enabled) {
-            const startBtn = document.getElementById('af-ability-start');
-            const stopBtn = document.getElementById('af-ability-stop');
-            const statusDot = document.getElementById('af-ability-status');
-            const select = document.getElementById('af-ability-select');
+            const startBtn = this.overlay.querySelector('#af-ability-start');
+            const stopBtn = this.overlay.querySelector('#af-ability-stop');
+            const statusDot = this.overlay.querySelector('#af-ability-status');
+            const select = this.overlay.querySelector('#af-ability-select');
             if (startBtn) startBtn.style.display = enabled ? 'none' : 'block';
             if (stopBtn) stopBtn.style.display = enabled ? 'block' : 'none';
             if (statusDot) { statusDot.style.color = enabled ? '#4caf50' : '#888'; statusDot.textContent = enabled ? '●' : '○'; }
@@ -872,7 +1041,7 @@
         }
 
         updateAbilityDisplay(log, target, hunter) {
-            const list = document.getElementById('af-ability-log');
+            const list = this.overlay.querySelector('#af-ability-log');
             if (!list) return;
             if (log.length === 0) { list.innerHTML = '<div class="empty-list">No abilities rolled</div>'; return; }
 
@@ -891,8 +1060,8 @@
         }
 
         updateAbilitySelect(pokemonName, abilities) {
-            const select = document.getElementById('af-ability-select');
-            const label = document.getElementById('af-ability-pokemon');
+            const select = this.overlay.querySelector('#af-ability-select');
+            const label = this.overlay.querySelector('#af-ability-pokemon');
             if (!select) return;
 
             if (label) {
@@ -922,24 +1091,26 @@
         }
 
         updateSpeedUI(currentSpeed) {
-            document.querySelectorAll('.pc-speed-btn').forEach(btn => {
+            this.overlay.querySelectorAll('.pc-speed-btn').forEach(btn => {
                 btn.classList.toggle('active', parseFloat(btn.dataset.speed) === currentSpeed);
                 btn.style.background = parseFloat(btn.dataset.speed) === currentSpeed ? '#667eea' : 'rgba(255,255,255,0.1)';
                 btn.style.color = parseFloat(btn.dataset.speed) === currentSpeed ? '#fff' : '#ccc';
             });
-            const ind = document.getElementById('af-speed-indicator');
+            const ind = this.overlay.querySelector('#af-speed-indicator');
             if (ind) { ind.textContent = `${currentSpeed}x`; ind.style.color = currentSpeed > 1 ? '#4caf50' : '#667eea'; }
         }
 
         toggleSection(id) {
-            const content = document.getElementById(`section-${id}-content`);
-            const arrow = document.getElementById(`section-${id}-arrow`);
-            if (content.style.display === 'none') {
-                content.style.display = 'block';
-                arrow.textContent = '▼';
-            } else {
-                content.style.display = 'none';
-                arrow.textContent = '▶';
+            const content = this.overlay.querySelector(`#section-${id}-content`);
+            const arrow = this.overlay.querySelector(`#section-${id}-arrow`);
+            if (content && arrow) {
+                if (content.style.display === 'none') {
+                    content.style.display = 'block';
+                    arrow.textContent = '▼';
+                } else {
+                    content.style.display = 'none';
+                    arrow.textContent = '▶';
+                }
             }
         }
 
@@ -1166,6 +1337,7 @@
         constructor() {
             this.logger = new Logger();
             this.ui = new UIController();
+            this.popupController = new PopUpController(this.ui);
 
             // Services with Dependencies
             this.abilityHunter = new AbilityHunter(this.logger, this.ui);
@@ -1197,7 +1369,15 @@
                 },
                 onSpeedChange: (speed) => this.speedController.setSpeed(speed),
                 onHpToggle: (show) => this.hpDisplay.toggle(show),
-                onTypeToggle: (show) => this.typeDisplay.toggle(show)
+                onTypeToggle: (show) => this.typeDisplay.toggle(show),
+                onPopupToggle: (enabled) => {
+                    const success = this.popupController.toggle(enabled);
+                    if (!success) {
+                        // If popup failed to open, uncheck the checkbox
+                        const checkbox = document.getElementById('af-popup-toggle');
+                        if (checkbox) checkbox.checked = false;
+                    }
+                }
             });
 
             // Start Observers (that don't depend on "Run" state being true, but just general monitoring)
