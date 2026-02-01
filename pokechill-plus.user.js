@@ -856,11 +856,11 @@
             document.getElementById('section-sounds-content').innerHTML = `
                 <label class="pc-checkbox-label">
                     <input type="checkbox" id="af-shiny-sound-toggle">
-                    <span>Sound bei Shiny</span>
+                    <span>Notify on Shiny</span>
                 </label>
                 <label class="pc-checkbox-label" style="margin-top: 5px;">
                     <input type="checkbox" id="af-ability-sound-toggle">
-                    <span>Sound bei gefundener Ability</span>
+                    <span>Notify on Target Ability</span>
                 </label>
             `;
 
@@ -1422,6 +1422,12 @@
                 const fakeText = `${pokemonName} now has ${abilityName}!`;
                 this.logger.log(`🧪 Simulating ability: "${fakeText}"`);
                 this.trainingMonitor.trackAbility(fakeText);
+            };
+            window.pcPlusSimulateShiny = (pokemonName = 'Pikachu') => {
+                this.logger.log(`🧪 Simulating shiny: ${pokemonName}`);
+                if (this.pokemonTracker.onShinyFound) {
+                    this.pokemonTracker.onShinyFound(pokemonName);
+                }
             };
             window.pcPlusTestShinySound = () => new Audio(SHINY_SOUND_URL).play();
             window.pcPlusTestAbilitySound = () => new Audio(ABILITY_SOUND_URL).play();
