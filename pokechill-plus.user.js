@@ -14,6 +14,11 @@
 (function () {
     'use strict';
 
+    // Sound URLs (hosted in repo)
+    const GENERELL_SUCCESS_SOUND_URL = 'https://raw.githubusercontent.com/TZY-1/pokechill-plus/main/sounds/success.mp3';
+    const SHINY_SOUND_URL = GENERELL_SUCCESS_SOUND_URL;
+    const ABILITY_SOUND_URL = GENERELL_SUCCESS_SOUND_URL;
+
     class Logger {
         constructor() {
             this.debugMode = false;
@@ -102,6 +107,7 @@
             this.pkmnStats = {}; // { id: { count: 0, new: 0, shiny: 0, ivs: 0 } }
             this.pkmnImages = {};
             this.observer = null;
+            this.onShinyFound = null;
         }
 
         reset() {
@@ -153,7 +159,10 @@
                 this.pkmnStats[pkmnId].count++;
 
                 if (tag === 'New!') this.pkmnStats[pkmnId].new++;
-                else if (tag === '✦Shiny✦!' || tag?.includes('Shiny')) this.pkmnStats[pkmnId].shiny++;
+                else if (tag === '✦Shiny✦!' || tag?.includes('Shiny')) {
+                    this.pkmnStats[pkmnId].shiny++;
+                    if (this.onShinyFound) this.onShinyFound(pkmnId);
+                }
                 else if (tag === "Iv's Up!") this.pkmnStats[pkmnId].ivs++;
 
                 if (img && img.src && !this.pkmnImages[pkmnId]) {
@@ -744,7 +753,9 @@
                 onSpeedChange: () => { },
                 onHpToggle: () => { },
                 onTypeToggle: () => { },
-                onPopupToggle: () => { }
+                onPopupToggle: () => { },
+                onShinySoundToggle: () => { },
+                onAbilitySoundToggle: () => { }
             };
         }
 
@@ -770,6 +781,7 @@
                 <div style="font-weight: bold; margin-bottom: 12px; font-size: 16px; color: #667eea; text-align: center;">⚡ Pokechill Plus</div>
                 ${this.renderSection('autofight', 'Auto-Fight', true)}
                 ${this.renderSection('display', 'Display Options')}
+                ${this.renderSection('sounds', 'Sounds')}
                 ${this.renderSection('tweaks', 'Game Tweaks')}
                 <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid #333; font-size: 10px; color: #888; text-align: center;">Ctrl+Space: Toggle | Ctrl+D: Debug</div>
             `;
@@ -838,6 +850,17 @@
                 <label class="pc-checkbox-label" style="margin-top: 5px;">
                     <input type="checkbox" id="af-popup-toggle">
                     <span>Open in Pop-Up Window</span>
+                </label>
+            `;
+
+            document.getElementById('section-sounds-content').innerHTML = `
+                <label class="pc-checkbox-label">
+                    <input type="checkbox" id="af-shiny-sound-toggle">
+                    <span>Sound bei Shiny</span>
+                </label>
+                <label class="pc-checkbox-label" style="margin-top: 5px;">
+                    <input type="checkbox" id="af-ability-sound-toggle">
+                    <span>Sound bei gefundener Ability</span>
                 </label>
             `;
 
@@ -913,6 +936,8 @@
                 if (target.id === 'af-hp-toggle') this.callbacks.onHpToggle(target.checked);
                 else if (target.id === 'af-type-toggle') this.callbacks.onTypeToggle(target.checked);
                 else if (target.id === 'af-popup-toggle') this.callbacks.onPopupToggle(target.checked);
+                else if (target.id === 'af-shiny-sound-toggle') this.callbacks.onShinySoundToggle(target.checked);
+                else if (target.id === 'af-ability-sound-toggle') this.callbacks.onAbilitySoundToggle(target.checked);
             };
 
             this.overlay.addEventListener('change', this.overlayChangeHandler);
@@ -1326,7 +1351,15 @@
 
             this.battler = new AutoBattler(this.logger, this.ui, this.itemTracker, this.abilityHunter);
 
-            this.abilityHunter.onTargetFound = () => this.battler.stop();
+            this.shinySoundEnabled = false;
+            this.abilitySoundEnabled = false;
+
+            this.abilityHunter.onTargetFound = () => {
+                this.battler.stop();
+                if (this.abilitySoundEnabled) {
+                    new Audio(ABILITY_SOUND_URL).play().catch(() => {});
+                }
+            };
         }
 
         init() {
@@ -1353,8 +1386,17 @@
                         const checkbox = document.getElementById('af-popup-toggle');
                         if (checkbox) checkbox.checked = false;
                     }
-                }
+                },
+                onShinySoundToggle: (enabled) => { this.shinySoundEnabled = enabled; },
+                onAbilitySoundToggle: (enabled) => { this.abilitySoundEnabled = enabled; }
             });
+
+            // Setup shiny sound callback
+            this.pokemonTracker.onShinyFound = () => {
+                if (this.shinySoundEnabled) {
+                    new Audio(SHINY_SOUND_URL).play().catch(() => {});
+                }
+            };
 
             // Start Observers (that don't depend on "Run" state being true, but just general monitoring)
             this.trainingMonitor.start();
@@ -1375,12 +1417,14 @@
                 }
             });
 
-            // Debug Function
+            // Debug Functions
             window.pcPlusSimulateAbility = (abilityName, pokemonName = 'TestPokemon') => {
                 const fakeText = `${pokemonName} now has ${abilityName}!`;
                 this.logger.log(`🧪 Simulating ability: "${fakeText}"`);
                 this.trainingMonitor.trackAbility(fakeText);
             };
+            window.pcPlusTestShinySound = () => new Audio(SHINY_SOUND_URL).play();
+            window.pcPlusTestAbilitySound = () => new Audio(ABILITY_SOUND_URL).play();
 
             this.logger.log('⚡ Pokechill Plus (Class) loaded!');
         }
