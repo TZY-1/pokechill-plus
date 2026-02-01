@@ -299,7 +299,6 @@
         }
 
         onTick() {
-            // Check for pokemon change to update select dropdown
             if (typeof saved !== 'undefined' && typeof pkmn !== 'undefined') {
                 const currentPokemon = saved.trainingPokemon;
                 if (currentPokemon !== this.lastTrainingPokemon) {
@@ -347,7 +346,6 @@
         }
 
         hasReachedTarget() {
-            // Backup check by scanning DOM (Reliability feature from original script)
             if (!this.enabled || !this.targetAbility) return false;
 
             const areaEndTitle = document.getElementById('area-end-moves-title');
@@ -554,7 +552,6 @@
             this.timerInterval = null;
             this.lastButtonState = false;
 
-            // Also stop ability hunt if running
             if (this.abilityHunter.enabled) {
                 this.abilityHunter.stopHunt();
             }
@@ -627,14 +624,12 @@
                 return true;
             }
 
-            // Open popup window
             this.popupWindow = window.open('', 'PokechillPlus', 'width=420,height=870,scrollbars=no,resizable=yes');
             if (!this.popupWindow) {
                 alert('Pop-Up blocked! Please allow pop-ups for this site.');
                 return false;
             }
 
-            // Setup popup document
             this.popupWindow.document.write(`
                 <!DOCTYPE html>
                 <html>
@@ -656,7 +651,6 @@
             `);
             this.popupWindow.document.close();
 
-            // Copy all styles to popup (including fonts)
             const styles = document.querySelectorAll('style, link[rel="stylesheet"]');
             styles.forEach(style => {
                 if (style.tagName === 'LINK') {
@@ -671,16 +665,12 @@
                 }
             });
 
-            // Move overlay to popup
             const overlay = this.uiController.overlay;
             if (overlay) {
-                // Store original event listeners data before moving
                 this.originalOnMouseDown = overlay.onmousedown;
 
-                // Disable draggable in popup
                 overlay.onmousedown = null;
 
-                // Reset position styles for popup
                 overlay.style.position = 'relative';
                 overlay.style.top = '0';
                 overlay.style.right = 'auto';
@@ -690,11 +680,9 @@
 
                 this.popupWindow.document.body.appendChild(overlay);
 
-                // Re-attach event listeners in popup context
                 this.uiController.attachEventListeners();
             }
 
-            // Handle popup close
             this.popupWindow.addEventListener('beforeunload', () => {
                 this.closePopup(true);
             });
@@ -706,10 +694,8 @@
         closePopup(fromPopup = false) {
             if (!this.isPopupMode) return;
 
-            // Move overlay back to main window
             const overlay = this.uiController.overlay;
             if (overlay) {
-                // Restore position styles
                 overlay.style.position = 'fixed';
                 overlay.style.top = '10px';
                 overlay.style.right = '10px';
@@ -717,24 +703,19 @@
                 overlay.style.margin = '';
                 overlay.style.maxHeight = '850px';
 
-                // Re-enable draggable
                 this.uiController.makeDraggable(overlay);
 
-                // Move back to main document
                 document.body.appendChild(overlay);
 
-                // Re-attach event listeners in main window context
                 this.uiController.attachEventListeners();
             }
 
-            // Close popup if not already closed
             if (this.popupWindow && !this.popupWindow.closed) {
                 this.popupWindow.close();
             }
             this.popupWindow = null;
             this.isPopupMode = false;
 
-            // Uncheck checkbox if closed from popup
             if (fromPopup) {
                 const checkbox = document.getElementById('af-popup-toggle');
                 if (checkbox) checkbox.checked = false;
@@ -1182,7 +1163,6 @@
             if (this.observer) return;
             this.logger.log('🛡️ Type Effectiveness Display started');
 
-            // Observer for move button creation/updates
             this.observer = new MutationObserver((mutations) => {
                 let shouldUpdate = false;
                 for (const m of mutations) {
@@ -1212,9 +1192,6 @@
                 if (shouldUpdate) this.updateEffectiveness();
             });
 
-            // Observe a broad container as move boxes are dynamically created/destroyed often
-            // Ideally we find a stable container. 'explore-bot' or 'team-menu' might contain them.
-            // For safety, document.body but filtered.
             this.observer.observe(document.body, {
                 childList: true,
                 subtree: true,
@@ -1237,7 +1214,7 @@
                 clearInterval(this.interval);
                 this.interval = null;
             }
-            // Cleanup existing indicators
+
             document.querySelectorAll('.pc-type-indicator').forEach(el => el.remove());
         }
 
@@ -1254,7 +1231,6 @@
             const opponentTypes = pkmn[currentOpponentId].type; // Expecting array e.g. ["fire", "flying"]
             if (!opponentTypes) return;
 
-            // Process all move buttons and filter for player moves
             document.querySelectorAll('.pkmn-movebox').forEach(box => {
                 if (!box.id.includes('team')) return;
 
