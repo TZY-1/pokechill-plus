@@ -19,6 +19,12 @@
     const SHINY_SOUND_URL = GENERELL_SUCCESS_SOUND_URL;
     const ABILITY_SOUND_URL = GENERELL_SUCCESS_SOUND_URL;
 
+    // LocalStorage Keys
+    const STORAGE_KEYS = {
+        SHINY_SOUND: 'pc-plus-shiny-sound',
+        ABILITY_SOUND: 'pc-plus-ability-sound'
+    };
+
     class Logger {
         constructor() {
             this.debugMode = false;
@@ -513,6 +519,18 @@
             this.logger = logger;
             this.currentSpeed = 1;
             this.defaultTimer = 2000;
+        }
+
+        getCurrentSpeedFromGame() {
+            if (typeof saved === 'undefined' || !saved.overrideBattleTimer) {
+                return 1;
+            }
+            const speed = this.defaultTimer / saved.overrideBattleTimer;
+            // Round to nearest valid speed (1, 1.5, 2, 3, 4)
+            const validSpeeds = [1, 1.5, 2, 3, 4];
+            return validSpeeds.reduce((prev, curr) =>
+                Math.abs(curr - speed) < Math.abs(prev - speed) ? curr : prev
+            );
         }
 
         setSpeed(multiplier) {
@@ -1351,8 +1369,9 @@
 
             this.battler = new AutoBattler(this.logger, this.ui, this.itemTracker, this.abilityHunter);
 
-            this.shinySoundEnabled = false;
-            this.abilitySoundEnabled = false;
+            // Load sound settings from localStorage
+            this.shinySoundEnabled = localStorage.getItem(STORAGE_KEYS.SHINY_SOUND) === 'true';
+            this.abilitySoundEnabled = localStorage.getItem(STORAGE_KEYS.ABILITY_SOUND) === 'true';
 
             this.abilityHunter.onTargetFound = () => {
                 this.battler.stop();
@@ -1387,8 +1406,14 @@
                         if (checkbox) checkbox.checked = false;
                     }
                 },
-                onShinySoundToggle: (enabled) => { this.shinySoundEnabled = enabled; },
-                onAbilitySoundToggle: (enabled) => { this.abilitySoundEnabled = enabled; }
+                onShinySoundToggle: (enabled) => {
+                    this.shinySoundEnabled = enabled;
+                    localStorage.setItem(STORAGE_KEYS.SHINY_SOUND, enabled);
+                },
+                onAbilitySoundToggle: (enabled) => {
+                    this.abilitySoundEnabled = enabled;
+                    localStorage.setItem(STORAGE_KEYS.ABILITY_SOUND, enabled);
+                }
             });
 
             // Setup shiny sound callback
@@ -1397,6 +1422,15 @@
                     new Audio(SHINY_SOUND_URL).play().catch(() => {});
                 }
             };
+
+            // Initialize sound checkboxes from localStorage
+            const shinySoundCheckbox = document.getElementById('af-shiny-sound-toggle');
+            const abilitySoundCheckbox = document.getElementById('af-ability-sound-toggle');
+            if (shinySoundCheckbox) shinySoundCheckbox.checked = this.shinySoundEnabled;
+            if (abilitySoundCheckbox) abilitySoundCheckbox.checked = this.abilitySoundEnabled;
+
+            // Sync game speed from the game state (wait for game to be ready)
+            this.syncGameSpeed();
 
             // Start Observers (that don't depend on "Run" state being true, but just general monitoring)
             this.trainingMonitor.start();
@@ -1442,6 +1476,22 @@
             this.trainingMonitor.reset();
             this.abilityHunter.reset();
             this.logger.log('🔄 All Stats Reset');
+        }
+
+        syncGameSpeed() {
+            // Wait for game to be ready, then sync speed
+            const checkAndSync = () => {
+                if (typeof saved !== 'undefined' && saved.overrideBattleTimer) {
+                    const currentSpeed = this.speedController.getCurrentSpeedFromGame();
+                    this.speedController.currentSpeed = currentSpeed;
+                    this.ui.updateSpeedUI(currentSpeed);
+                    this.logger.log(`⚡ Synced game speed: ${currentSpeed}x`);
+                } else {
+                    // Game not ready yet, retry
+                    setTimeout(checkAndSync, 500);
+                }
+            };
+            checkAndSync();
         }
     }
 
