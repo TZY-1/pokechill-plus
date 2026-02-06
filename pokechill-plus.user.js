@@ -363,26 +363,19 @@
         hasReachedTarget() {
             if (!this.enabled || !this.targetAbility) return false;
 
-            const areaEndTitle = document.getElementById('area-end-moves-title');
-            if (!areaEndTitle) return false;
+            // Check game state directly - ability is set synchronously before the button appears
+            if (typeof saved !== 'undefined' && typeof pkmn !== 'undefined' && saved.trainingPokemon) {
+                const currentAbility = pkmn[saved.trainingPokemon].ability;
+                if (currentAbility) {
+                    const normTarget = this.targetAbility.toLowerCase().replace(/\s+/g, '');
+                    const normCurrent = currentAbility.toLowerCase().replace(/\s+/g, '');
 
-            const spans = areaEndTitle.querySelectorAll('span');
-            for (const span of spans) {
-                const text = span.textContent.trim();
-                if (!text.includes(' now has ')) continue;
-
-                const abilityMatch = text.match(/(.+?)\s+now has\s+(.+)!/);
-                if (!abilityMatch) continue;
-
-                const abilityName = abilityMatch[2].trim();
-                const normTarget = this.targetAbility.toLowerCase().replace(/\s+/g, '');
-                const normAbility = abilityName.toLowerCase().replace(/\s+/g, '');
-
-                if (normAbility === normTarget) {
-                    this.logger.log(`🛑 Target ability "${abilityName}" found (DOM check), blocking click!`);
-                    this.stopHunt();
-                    if (this.onTargetFound) this.onTargetFound();
-                    return true;
+                    if (normCurrent === normTarget) {
+                        this.logger.log(`🛑 Target ability "${currentAbility}" found (game state check), blocking click!`);
+                        this.stopHunt();
+                        if (this.onTargetFound) this.onTargetFound();
+                        return true;
+                    }
                 }
             }
             return false;
@@ -1439,6 +1432,12 @@
 
             setInterval(() => this.abilityHunter.onTick(), 500);
 
+            // Workaround: Pokechill bug - training effect re-fires because updateWildPkmn()
+            // processes dead wilds multiple times at high speed, each queuing a setWildPkmn()
+            // call that triggers training[...].effect() again when currentTrainingWave <= 0.
+            // Fix: Inject a page-level script that wraps all training effects with a once-guard.
+            this.patchTrainingEffects();
+
             // Global Shortcuts
             document.addEventListener('keydown', (e) => {
                 if (e.ctrlKey && e.code === 'Space') {
@@ -1476,6 +1475,42 @@
             this.trainingMonitor.reset();
             this.abilityHunter.reset();
             this.logger.log('🔄 All Stats Reset');
+        }
+
+        patchTrainingEffects() {
+            const script = document.createElement('script');
+            script.textContent = `
+(function() {
+    function patch() {
+        if (typeof training === 'undefined') { setTimeout(patch, 200); return; }
+
+        var effectGuard = false;
+
+        for (var key in training) {
+            if (training[key] && typeof training[key].effect === 'function') {
+                (function(orig) {
+                    training[key].effect = function() {
+                        if (effectGuard) return;
+                        effectGuard = true;
+                        orig.call(this);
+                    };
+                })(training[key].effect);
+            }
+        }
+
+        var areaEnd = document.getElementById('area-end');
+        if (areaEnd) {
+            new MutationObserver(function() {
+                if (areaEnd.style.display === 'none') effectGuard = false;
+            }).observe(areaEnd, { attributes: true, attributeFilter: ['style'] });
+        }
+    }
+    patch();
+})();
+`;
+            document.head.appendChild(script);
+            script.remove();
+            this.logger.log('🛡️ Training effect patch applied');
         }
 
         syncGameSpeed() {
