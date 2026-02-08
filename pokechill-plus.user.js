@@ -1150,6 +1150,38 @@
                 .empty-list { color: #888; font-size: 11px; text-align: center; }
                 .pc-speed-btn { flex: 1; padding: 6px 4px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 11px; transition: all 0.2s; }
                 .pc-checkbox-label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px; }
+                
+                /* Remove Button Styles */
+                .pc-remove-btn {
+                    position: absolute;
+                    left: 75px; /* Default fallback */
+                    top: 6px;
+                    width: 24px;
+                    height: 24px;
+                    background: rgb(255, 81, 81);
+                    color: white;
+                    border-radius: 4px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 14px;
+                    font-weight: bold;
+                    cursor: pointer;
+                    z-index: 1000;
+                    border: 1px solid rgba(0,0,0,0.4);
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+                    transition: filter 0.1s, transform 0.1s;
+                    user-select: none;
+                    pointer-events: auto !important;
+                }
+                .pc-remove-btn:hover {
+                    filter: brightness(1.1);
+                    transform: scale(1.05);
+                }
+                .pc-remove-btn:active {
+                    transform: scale(0.95);
+                    filter: brightness(0.9);
+                }
             `;
             const style = document.createElement('style');
             style.textContent = css;
@@ -1343,6 +1375,84 @@
         }
     }
 
+    class TeamUIEnhancer {
+        constructor(logger) {
+            this.logger = logger;
+            this.observer = null;
+        }
+
+        start() {
+            const teamPreview = document.getElementById('team-preview');
+            if (!teamPreview) {
+                setTimeout(() => this.start(), 1000);
+                return;
+            }
+
+            this.logger.log('🛠️ Team UI Enhancer started');
+            this.observer = new MutationObserver(() => this.injectRemoveButtons());
+            this.observer.observe(teamPreview, { childList: true, subtree: true });
+
+            this.injectRemoveButtons();
+        }
+
+        injectRemoveButtons() {
+            const teamPreview = document.getElementById('team-preview');
+            if (!teamPreview) return;
+
+            // Find all occupied slots
+            const slots = teamPreview.querySelectorAll('.explore-team-member');
+            slots.forEach(slot => {
+                const slotId = slot.id.replace('explore-', '').replace('-member', '');
+
+                // Check if it's an occupied slot (has a sprite that's not a placeholder)
+                const spriteData = slot.querySelector('.explore-sprite');
+                const isOccupied = spriteData && spriteData.dataset.pkmnEditor;
+
+                if (isOccupied) {
+                    if (!slot.querySelector('.pc-remove-btn')) {
+                        const removeBtn = document.createElement('div');
+                        removeBtn.className = 'pc-remove-btn';
+                        removeBtn.innerHTML = '✕';
+                        removeBtn.title = 'Remove Pokemon';
+                        slot.style.position = 'relative';
+
+                        // Position left of infobox, right of item
+                        const itemDiv = slot.querySelector('.team-held-item');
+                        if (itemDiv) {
+                            // Calculate position: right edge of item + some margin
+                            const itemRight = itemDiv.offsetLeft + itemDiv.offsetWidth;
+                            removeBtn.style.left = (itemRight + 4) + 'px';
+                        }
+
+                        removeBtn.addEventListener('click', (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            this.removePokemon(slotId);
+                        }, true);
+                        slot.appendChild(removeBtn);
+                    }
+                }
+            });
+        }
+
+        removePokemon(slotId) {
+            if (typeof saved === 'undefined' || !saved.previewTeams || !saved.currentPreviewTeam) return;
+
+            this.logger.log(`🗑️ Removing Pokemon from slot: ${slotId}`);
+
+            const currentTeam = saved.previewTeams[saved.currentPreviewTeam];
+            if (currentTeam && currentTeam[slotId]) {
+                currentTeam[slotId].pkmn = undefined;
+                currentTeam[slotId].item = undefined;
+
+                // Trigger the game's native update function
+                if (typeof updatePreviewTeam === 'function') {
+                    updatePreviewTeam();
+                }
+            }
+        }
+    }
+
     // --- Main Application ---
 
     class PokechillPlus {
@@ -1359,6 +1469,7 @@
             this.hpDisplay = new HPDisplay(this.logger);
             this.typeDisplay = new MoveEffectivenessDisplay(this.logger);
             this.speedController = new GameSpeedController(this.logger);
+            this.teamEnhancer = new TeamUIEnhancer(this.logger);
 
             this.battler = new AutoBattler(this.logger, this.ui, this.itemTracker, this.abilityHunter);
 
@@ -1369,7 +1480,7 @@
             this.abilityHunter.onTargetFound = () => {
                 this.battler.stop();
                 if (this.abilitySoundEnabled) {
-                    new Audio(ABILITY_SOUND_URL).play().catch(() => {});
+                    new Audio(ABILITY_SOUND_URL).play().catch(() => { });
                 }
             };
         }
@@ -1412,7 +1523,7 @@
             // Setup shiny sound callback
             this.pokemonTracker.onShinyFound = () => {
                 if (this.shinySoundEnabled) {
-                    new Audio(SHINY_SOUND_URL).play().catch(() => {});
+                    new Audio(SHINY_SOUND_URL).play().catch(() => { });
                 }
             };
 
@@ -1429,6 +1540,7 @@
             this.trainingMonitor.start();
             this.itemTracker.start();
             this.pokemonTracker.start();
+            this.teamEnhancer.start();
 
             setInterval(() => this.abilityHunter.onTick(), 500);
 
