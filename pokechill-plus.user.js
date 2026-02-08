@@ -22,7 +22,8 @@
     // LocalStorage Keys
     const STORAGE_KEYS = {
         SHINY_SOUND: 'pc-plus-shiny-sound',
-        ABILITY_SOUND: 'pc-plus-ability-sound'
+        ABILITY_SOUND: 'pc-plus-ability-sound',
+        TEAM_REMOVE_BTN: 'pc-plus-team-remove-btn'
     };
 
     class Logger {
@@ -862,6 +863,10 @@
                     <input type="checkbox" id="af-popup-toggle">
                     <span>Open in Pop-Up Window</span>
                 </label>
+                <label class="pc-checkbox-label" style="margin-top: 5px;">
+                    <input type="checkbox" id="af-team-remove-toggle">
+                    <span>Show Team Remove Button</span>
+                </label>
             `;
 
             document.getElementById('section-sounds-content').innerHTML = `
@@ -947,6 +952,7 @@
                 if (target.id === 'af-hp-toggle') this.callbacks.onHpToggle(target.checked);
                 else if (target.id === 'af-type-toggle') this.callbacks.onTypeToggle(target.checked);
                 else if (target.id === 'af-popup-toggle') this.callbacks.onPopupToggle(target.checked);
+                else if (target.id === 'af-team-remove-toggle') this.callbacks.onTeamRemoveToggle(target.checked);
                 else if (target.id === 'af-shiny-sound-toggle') this.callbacks.onShinySoundToggle(target.checked);
                 else if (target.id === 'af-ability-sound-toggle') this.callbacks.onAbilitySoundToggle(target.checked);
             };
@@ -1379,9 +1385,30 @@
         constructor(logger) {
             this.logger = logger;
             this.observer = null;
+            this.active = true;
+        }
+
+        toggle(enabled) {
+            this.active = enabled;
+            if (enabled) {
+                this.start();
+            } else {
+                this.stop();
+            }
+        }
+
+        stop() {
+            if (this.observer) {
+                this.observer.disconnect();
+                this.observer = null;
+            }
+            // Remove all existing buttons
+            document.querySelectorAll('.pc-remove-btn').forEach(btn => btn.remove());
         }
 
         start() {
+            if (this.observer) return; // Already running
+
             const teamPreview = document.getElementById('team-preview');
             if (!teamPreview) {
                 setTimeout(() => this.start(), 1000);
@@ -1396,6 +1423,8 @@
         }
 
         injectRemoveButtons() {
+            if (!this.active) return;
+
             const teamPreview = document.getElementById('team-preview');
             if (!teamPreview) return;
 
@@ -1477,6 +1506,10 @@
             this.shinySoundEnabled = localStorage.getItem(STORAGE_KEYS.SHINY_SOUND) === 'true';
             this.abilitySoundEnabled = localStorage.getItem(STORAGE_KEYS.ABILITY_SOUND) === 'true';
 
+            // Default team remove btn to true if not set
+            const savedRemoveBtnPref = localStorage.getItem(STORAGE_KEYS.TEAM_REMOVE_BTN);
+            this.teamRemoveBtnEnabled = savedRemoveBtnPref === null ? true : savedRemoveBtnPref === 'true';
+
             this.abilityHunter.onTargetFound = () => {
                 this.battler.stop();
                 if (this.abilitySoundEnabled) {
@@ -1517,6 +1550,11 @@
                 onAbilitySoundToggle: (enabled) => {
                     this.abilitySoundEnabled = enabled;
                     localStorage.setItem(STORAGE_KEYS.ABILITY_SOUND, enabled);
+                },
+                onTeamRemoveToggle: (enabled) => {
+                    this.teamRemoveBtnEnabled = enabled;
+                    localStorage.setItem(STORAGE_KEYS.TEAM_REMOVE_BTN, enabled);
+                    this.teamEnhancer.toggle(enabled);
                 }
             });
 
@@ -1530,8 +1568,10 @@
             // Initialize sound checkboxes from localStorage
             const shinySoundCheckbox = document.getElementById('af-shiny-sound-toggle');
             const abilitySoundCheckbox = document.getElementById('af-ability-sound-toggle');
+            const teamRemoveCheckbox = document.getElementById('af-team-remove-toggle');
             if (shinySoundCheckbox) shinySoundCheckbox.checked = this.shinySoundEnabled;
             if (abilitySoundCheckbox) abilitySoundCheckbox.checked = this.abilitySoundEnabled;
+            if (teamRemoveCheckbox) teamRemoveCheckbox.checked = this.teamRemoveBtnEnabled;
 
             // Sync game speed from the game state (wait for game to be ready)
             this.syncGameSpeed();
@@ -1540,7 +1580,10 @@
             this.trainingMonitor.start();
             this.itemTracker.start();
             this.pokemonTracker.start();
-            this.teamEnhancer.start();
+
+            if (this.teamRemoveBtnEnabled) {
+                this.teamEnhancer.start();
+            }
 
             setInterval(() => this.abilityHunter.onTick(), 500);
 
