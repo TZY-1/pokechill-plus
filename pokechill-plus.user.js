@@ -1385,6 +1385,7 @@
         constructor(logger) {
             this.logger = logger;
             this.observer = null;
+            this.resizeObserver = null;
             this.active = true;
         }
 
@@ -1402,6 +1403,10 @@
                 this.observer.disconnect();
                 this.observer = null;
             }
+            if (this.resizeObserver) {
+                this.resizeObserver.disconnect();
+                this.resizeObserver = null;
+            }
             // Remove all existing buttons
             document.querySelectorAll('.pc-remove-btn').forEach(btn => btn.remove());
         }
@@ -1416,10 +1421,28 @@
             }
 
             this.logger.log('🛠️ Team UI Enhancer started');
+
+            // Main observer for team changes
             this.observer = new MutationObserver(() => this.injectRemoveButtons());
             this.observer.observe(teamPreview, { childList: true, subtree: true });
 
+            // Observer for layout changes/resizing
+            this.resizeObserver = new ResizeObserver((entries) => {
+                for (const entry of entries) {
+                    this.updateButtonPosition(entry.target);
+                }
+            });
+
             this.injectRemoveButtons();
+        }
+
+        updateButtonPosition(slot) {
+            const infobox = slot.querySelector('.explore-header-infobox');
+            const removeBtn = slot.querySelector('.pc-remove-btn');
+            if (infobox && removeBtn) {
+                const offset = 28;
+                removeBtn.style.left = (infobox.offsetLeft - offset) + 'px';
+            }
         }
 
         injectRemoveButtons() {
@@ -1433,7 +1456,6 @@
             slots.forEach(slot => {
                 const slotId = slot.id.replace('explore-', '').replace('-member', '');
 
-                // Check if it's an occupied slot (has a sprite that's not a placeholder)
                 const spriteData = slot.querySelector('.explore-sprite');
                 const isOccupied = spriteData && spriteData.dataset.pkmnEditor;
 
@@ -1443,23 +1465,22 @@
                         removeBtn.className = 'pc-remove-btn';
                         removeBtn.innerHTML = '✕';
                         removeBtn.title = 'Remove Pokemon';
-                        slot.style.position = 'relative';
 
-                        // Position left of infobox, right of item
-                        const itemDiv = slot.querySelector('.team-held-item');
-                        if (itemDiv) {
-                            // Calculate position: right edge of item + some margin
-                            const itemRight = itemDiv.offsetLeft + itemDiv.offsetWidth;
-                            removeBtn.style.left = (itemRight + 4) + 'px';
-                        }
+                        slot.style.position = 'relative';
 
                         removeBtn.addEventListener('click', (e) => {
                             e.preventDefault();
                             e.stopPropagation();
                             this.removePokemon(slotId);
                         }, true);
+
                         slot.appendChild(removeBtn);
+
+                        if (this.resizeObserver) {
+                            this.resizeObserver.observe(slot);
+                        }
                     }
+                    this.updateButtonPosition(slot);
                 }
             });
         }
