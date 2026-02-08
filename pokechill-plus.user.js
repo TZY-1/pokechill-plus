@@ -1188,6 +1188,25 @@
                     transform: scale(0.95);
                     filter: brightness(0.9);
                 }
+                .pc-clear-team-btn {
+                    width: 28px;
+                    height: 28px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    background: rgb(255, 81, 81);
+                    color: white;
+                    border-radius: 4px;
+                    font-size: 16px;
+                    cursor: pointer;
+                    border: 1px solid rgba(0,0,0,0.4);
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+                    transition: filter 0.1s, transform 0.1s;
+                    user-select: none;
+                    margin-left: 10px;
+                }
+                .pc-clear-team-btn:hover { filter: brightness(1.1); transform: scale(1.05); }
+                .pc-clear-team-btn:active { transform: scale(0.95); }
             `;
             const style = document.createElement('style');
             style.textContent = css;
@@ -1409,6 +1428,7 @@
             }
             // Remove all existing buttons
             document.querySelectorAll('.pc-remove-btn').forEach(btn => btn.remove());
+            document.querySelectorAll('.pc-clear-team-btn').forEach(btn => btn.remove());
         }
 
         start() {
@@ -1448,6 +1468,8 @@
         injectRemoveButtons() {
             if (!this.active) return;
 
+            this.injectClearButton();
+
             const teamPreview = document.getElementById('team-preview');
             if (!teamPreview) return;
 
@@ -1483,6 +1505,48 @@
                     this.updateButtonPosition(slot);
                 }
             });
+        }
+
+        injectClearButton() {
+            if (!this.active) return;
+
+            const selectorBar = document.querySelector('.team-menu-selector-new');
+            if (selectorBar && !selectorBar.querySelector('.pc-clear-team-btn')) {
+                const clearBtn = document.createElement('div');
+                clearBtn.className = 'pc-clear-team-btn';
+                clearBtn.innerHTML = '🗑️';
+                clearBtn.title = 'Clear Full Team';
+
+                clearBtn.addEventListener('click', (e) => {
+                    if (confirm('Are you sure you want to clear the entire team?')) {
+                        this.clearFullTeam();
+                    }
+                });
+
+                selectorBar.appendChild(clearBtn);
+            }
+        }
+
+        clearFullTeam() {
+            if (typeof saved === 'undefined' || !saved.previewTeams || !saved.currentPreviewTeam) return;
+
+            this.logger.log('🗑️ Clearing full team');
+
+            const currentTeam = saved.previewTeams[saved.currentPreviewTeam];
+            if (currentTeam) {
+                // Clear all slots (numerical keys 0-5)
+                Object.keys(currentTeam).forEach(key => {
+                    if (key !== 'name' && currentTeam[key]) {
+                        currentTeam[key].pkmn = undefined;
+                        currentTeam[key].item = undefined;
+                    }
+                });
+
+                // Trigger the game's native update function
+                if (typeof updatePreviewTeam === 'function') {
+                    updatePreviewTeam();
+                }
+            }
         }
 
         removePokemon(slotId) {
