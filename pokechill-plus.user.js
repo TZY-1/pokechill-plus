@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ⚡ Pokechill Plus
 // @namespace    http://tampermonkey.net/
-// @version      1.10
+// @version      1.11
 // @description  Automatic clicking on Fight Again + Item Tracking
 // @author       Teazy
 // @match        https://play-pokechill.github.io/*
