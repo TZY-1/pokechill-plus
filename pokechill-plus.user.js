@@ -23,7 +23,8 @@
     const STORAGE_KEYS = {
         SHINY_SOUND: 'pc-plus-shiny-sound',
         ABILITY_SOUND: 'pc-plus-ability-sound',
-        TEAM_REMOVE_BTN: 'pc-plus-team-remove-btn'
+        TEAM_REMOVE_BTN: 'pc-plus-team-remove-btn',
+        POKEMON_INFO: 'pc-plus-pokemon-info'
     };
 
     class Logger {
@@ -772,7 +773,8 @@
                 onTypeToggle: () => { },
                 onPopupToggle: () => { },
                 onShinySoundToggle: () => { },
-                onAbilitySoundToggle: () => { }
+                onAbilitySoundToggle: () => { },
+                onPokemonInfoToggle: () => { }
             };
         }
 
@@ -861,6 +863,10 @@
                     <input type="checkbox" id="af-team-remove-toggle">
                     <span>Show Team Remove Button</span>
                 </label>
+                <label class="pc-checkbox-label" style="margin-top: 5px;">
+                    <input type="checkbox" id="af-pokemon-info-toggle" checked>
+                    <span>Show Pokemon Info Buttons</span>
+                </label>
             `;
 
             document.getElementById('section-sounds-content').innerHTML = `
@@ -943,6 +949,7 @@
                 else if (target.id === 'af-team-remove-toggle') this.callbacks.onTeamRemoveToggle(target.checked);
                 else if (target.id === 'af-shiny-sound-toggle') this.callbacks.onShinySoundToggle(target.checked);
                 else if (target.id === 'af-ability-sound-toggle') this.callbacks.onAbilitySoundToggle(target.checked);
+                else if (target.id === 'af-pokemon-info-toggle') this.callbacks.onPokemonInfoToggle(target.checked);
             };
 
             this.overlay.addEventListener('change', this.overlayChangeHandler);
@@ -1562,7 +1569,7 @@
                     top: 4px;
                     cursor: pointer;
                     font-size: 1.2em;
-                    color: #d1d5db;
+                    color: #d1d5db; /* Light gray */
                     transition: color 0.2s, transform 0.2s;
                     user-select: none;
                     z-index: 10000 !important;
@@ -1841,6 +1848,9 @@
             const savedRemoveBtnPref = localStorage.getItem(STORAGE_KEYS.TEAM_REMOVE_BTN);
             this.teamRemoveBtnEnabled = savedRemoveBtnPref === null ? true : savedRemoveBtnPref === 'true';
 
+            const savedPokemonInfoPref = localStorage.getItem(STORAGE_KEYS.POKEMON_INFO);
+            this.pokemonInfoEnabled = savedPokemonInfoPref === null ? true : savedPokemonInfoPref === 'true';
+
             this.abilityHunter.onTargetFound = () => {
                 this.battler.stop();
                 if (this.abilitySoundEnabled) {
@@ -1885,6 +1895,15 @@
                     this.teamRemoveBtnEnabled = enabled;
                     localStorage.setItem(STORAGE_KEYS.TEAM_REMOVE_BTN, enabled);
                     this.teamEnhancer.toggle(enabled);
+                },
+                onPokemonInfoToggle: (enabled) => {
+                    this.pokemonInfoEnabled = enabled;
+                    localStorage.setItem(STORAGE_KEYS.POKEMON_INFO, enabled);
+                    if (enabled) {
+                        this.pokemonInfo.start();
+                    } else {
+                        this.pokemonInfo.stop();
+                    }
                 }
             });
 
@@ -1897,9 +1916,11 @@
             const shinySoundCheckbox = document.getElementById('af-shiny-sound-toggle');
             const abilitySoundCheckbox = document.getElementById('af-ability-sound-toggle');
             const teamRemoveCheckbox = document.getElementById('af-team-remove-toggle');
+            const pokemonInfoCheckbox = document.getElementById('af-pokemon-info-toggle');
             if (shinySoundCheckbox) shinySoundCheckbox.checked = this.shinySoundEnabled;
             if (abilitySoundCheckbox) abilitySoundCheckbox.checked = this.abilitySoundEnabled;
             if (teamRemoveCheckbox) teamRemoveCheckbox.checked = this.teamRemoveBtnEnabled;
+            if (pokemonInfoCheckbox) pokemonInfoCheckbox.checked = this.pokemonInfoEnabled;
 
             this.syncGameSpeed();
 
@@ -1911,7 +1932,9 @@
                 this.teamEnhancer.start();
             }
 
-            this.pokemonInfo.start();
+            if (this.pokemonInfoEnabled) {
+                this.pokemonInfo.start();
+            }
 
             setInterval(() => this.abilityHunter.onTick(), 500);
 
