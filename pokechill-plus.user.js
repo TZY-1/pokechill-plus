@@ -43,6 +43,13 @@
         }
     }
 
+    function formatPokemonName(id) {
+        if (typeof format === 'function') {
+            return format(id);
+        }
+        return id.charAt(0).toUpperCase() + id.slice(1).replace(/([A-Z])/g, ' $1');
+    }
+
     class ItemTracker {
         constructor(logger, uiController) {
             this.logger = logger;
@@ -93,7 +100,6 @@
             const span = node.querySelector('span');
 
             if (itemId && span) {
-                // Format is "+X"
                 const count = parseInt(span.textContent.replace('+', '')) || 0;
                 if (count > 0) {
                     this.itemStats[itemId] = (this.itemStats[itemId] || 0) + count;
@@ -111,7 +117,7 @@
         constructor(logger, uiController) {
             this.logger = logger;
             this.uiController = uiController;
-            this.pkmnStats = {}; // { id: { count: 0, new: 0, shiny: 0, ivs: 0 } }
+            this.pkmnStats = {};
             this.pkmnImages = {};
             this.observer = null;
             this.onShinyFound = null;
@@ -385,8 +391,7 @@
         getTrainingPokemonName() {
             if (typeof saved === 'undefined' || typeof pkmn === 'undefined') return null;
             if (!saved.trainingPokemon || !pkmn[saved.trainingPokemon]) return null;
-            const id = saved.trainingPokemon;
-            return id.charAt(0).toUpperCase() + id.slice(1).replace(/([A-Z])/g, ' $1');
+            return formatPokemonName(saved.trainingPokemon);
         }
 
         getAvailableAbilities() {
@@ -819,18 +824,7 @@
                     <div style="font-size: 12px; color: #69df96; margin-bottom: 6px;">🐾 Gathered Pokemons</div>
                     <div id="af-pkmn-list" class="pc-item-list"><div class="empty-list">No pokemon gathered</div></div>
                 </div>
-                <!-- IVs -->
-                <div style="border-top: 1px solid #444; padding-top: 10px; margin-top: 10px;">
-                    <div style="font-size: 12px; color: #a78bfa; margin-bottom: 6px;">❖ IVs Gained</div>
-                    <div id="af-iv-list" class="pc-item-list"><div class="empty-list">No IVs gained</div></div>
-                </div>
-                <!-- Moves -->
-                <div style="border-top: 1px solid #444; padding-top: 10px; margin-top: 10px;">
-                    <div style="font-size: 12px; color: #f472b6; margin-bottom: 6px;">◇ Moves Learned</div>
-                    <div id="af-move-list" class="pc-item-list"><div class="empty-list">No moves learned</div></div>
-                </div>
-                <!-- Ability Hunt -->
-                <div style="border-top: 1px solid #444; padding-top: 10px; margin-top: 10px;">
+                <div style="border-top: 1px solid #444; padding-top: 10px;">
                     <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
                         <div style="font-size: 12px; color: #69df96;">★ Ability Hunt</div>
                         <span id="af-ability-status" style="color: #888; font-size: 14px;">○</span>
@@ -906,16 +900,13 @@
         }
 
         attachEventListeners() {
-            // Remove old event listener if exists
             if (this.overlayClickHandler) {
                 this.overlay.removeEventListener('click', this.overlayClickHandler);
             }
 
-            // Event delegation: single listener on overlay
             this.overlayClickHandler = (e) => {
                 const target = e.target;
 
-                // Button clicks
                 if (target.id === 'af-start-btn') this.callbacks.onStart();
                 else if (target.id === 'af-stop-btn') this.callbacks.onStop();
                 else if (target.id === 'af-reset-btn') this.callbacks.onReset();
@@ -925,14 +916,12 @@
                 }
                 else if (target.id === 'af-ability-stop') this.callbacks.onAbilityHuntStop();
 
-                // Speed buttons
                 else if (target.classList.contains('pc-speed-btn')) {
                     const speed = parseFloat(target.dataset.speed);
                     this.callbacks.onSpeedChange(speed);
                     this.updateSpeedUI(speed);
                 }
 
-                // Section headers (check if target or parent is section header)
                 else if (target.classList.contains('pc-section-header') || target.closest('.pc-section-header')) {
                     const header = target.classList.contains('pc-section-header') ? target : target.closest('.pc-section-header');
                     const id = header.id.replace('section-', '').replace('-header', '');
@@ -942,7 +931,6 @@
 
             this.overlay.addEventListener('click', this.overlayClickHandler);
 
-            // Checkboxes need change event
             if (this.overlayChangeHandler) {
                 this.overlay.removeEventListener('change', this.overlayChangeHandler);
             }
@@ -1011,7 +999,7 @@
                 if (data.shiny > 0) tags.push(`<span style="color:#ffc107; font-size:9px;">SHINY! x${data.shiny}</span>`);
                 if (data.ivs > 0) tags.push(`<span style="color:#a78bfa; font-size:9px;">IVs UP! x${data.ivs}</span>`);
 
-                const name = id.charAt(0).toUpperCase() + id.slice(1).replace(/([A-Z])/g, ' $1');
+                const name = formatPokemonName(id);
 
                 return `
                 <div style="margin: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 5px;">
@@ -1104,7 +1092,7 @@
                     const label = tier === 1 ? 'Common' : (tier === 2 ? 'Uncommon' : 'Rare');
                     html += `<optgroup label="${label}">`;
                     tierAbilities.forEach(a => {
-                        const name = a.charAt(0).toUpperCase() + a.slice(1).replace(/([A-Z])/g, ' $1');
+                        const name = formatPokemonName(a);
                         html += `<option value="${a}">${name}</option>`;
                     });
                     html += `</optgroup>`;
@@ -1259,12 +1247,10 @@
             this.observer = new MutationObserver((mutations) => {
                 let shouldUpdate = false;
                 for (const m of mutations) {
-                    // Ignore our own indicators
                     if (m.target.classList && m.target.classList.contains('pc-type-indicator')) continue;
                     if (m.target.closest && m.target.closest('.pc-type-indicator')) continue;
 
                     if (m.type === 'childList') {
-                        // Check if added nodes are NOT our indicators
                         for (const node of m.addedNodes) {
                             if (node.nodeType === 1 && !node.classList.contains('pc-type-indicator') && !node.querySelector('.pc-type-indicator')) {
                                 shouldUpdate = true;
@@ -1272,9 +1258,7 @@
                             }
                         }
                     }
-                    // Updates on style or class might indicate new move loaded
                     else if (m.type === 'attributes' && (m.attributeName === 'style' || m.attributeName === 'class')) {
-                        // Ignore if target is our indicator (handled above by target check, but double check)
                         if (!m.target.classList.contains('pc-type-indicator')) {
                             shouldUpdate = true;
                         }
@@ -1292,7 +1276,6 @@
                 attributeFilter: ['style', 'class', 'data-move']
             });
 
-            // Fallback interval just in case
             this.interval = setInterval(() => this.updateEffectiveness(), 1000);
 
             this.updateEffectiveness();
@@ -1333,7 +1316,6 @@
                 const moveType = move[moveId].type;
                 if (!moveType) return;
 
-                // Calculate effectiveness using the game's internal chart
                 let effectiveness = typeEffectiveness(moveType, opponentTypes);
                 if (effectiveness === undefined || effectiveness === null) effectiveness = 1;
 
@@ -1392,7 +1374,6 @@
                 indicator.style.color = '#f44336'; // Red
                 indicator.style.display = 'inline-block';
             } else {
-                // Neutral x1
                 indicator.textContent = `▬ x${multiplier}`;
                 indicator.style.color = '#ffffff'; // White
                 indicator.style.display = 'inline-block';
@@ -1426,13 +1407,12 @@
                 this.resizeObserver.disconnect();
                 this.resizeObserver = null;
             }
-            // Remove all existing buttons
             document.querySelectorAll('.pc-remove-btn').forEach(btn => btn.remove());
             document.querySelectorAll('.pc-clear-team-btn').forEach(btn => btn.remove());
         }
 
         start() {
-            if (this.observer) return; // Already running
+            if (this.observer) return;
 
             const teamPreview = document.getElementById('team-preview');
             if (!teamPreview) {
@@ -1442,11 +1422,9 @@
 
             this.logger.log('🛠️ Team UI Enhancer started');
 
-            // Main observer for team changes
             this.observer = new MutationObserver(() => this.injectRemoveButtons());
             this.observer.observe(teamPreview, { childList: true, subtree: true });
 
-            // Observer for layout changes/resizing
             this.resizeObserver = new ResizeObserver((entries) => {
                 for (const entry of entries) {
                     this.updateButtonPosition(entry.target);
@@ -1473,7 +1451,6 @@
             const teamPreview = document.getElementById('team-preview');
             if (!teamPreview) return;
 
-            // Find all occupied slots
             const slots = teamPreview.querySelectorAll('.explore-team-member');
             slots.forEach(slot => {
                 const slotId = slot.id.replace('explore-', '').replace('-member', '');
@@ -1534,7 +1511,6 @@
 
             const currentTeam = saved.previewTeams[saved.currentPreviewTeam];
             if (currentTeam) {
-                // Clear all slots (numerical keys 0-5)
                 Object.keys(currentTeam).forEach(key => {
                     if (key !== 'name' && currentTeam[key]) {
                         currentTeam[key].pkmn = undefined;
@@ -1559,7 +1535,6 @@
                 currentTeam[slotId].pkmn = undefined;
                 currentTeam[slotId].item = undefined;
 
-                // Trigger the game's native update function
                 if (typeof updatePreviewTeam === 'function') {
                     updatePreviewTeam();
                 }
@@ -1584,21 +1559,21 @@
                 .pc-info-icon {
                     position: absolute;
                     right: 4px;
-                    top: 4px; /* Fixed distance from top as requested */
+                    top: 4px;
                     cursor: pointer;
                     font-size: 1.2em;
-                    color: #d1d5db; /* Light gray */
+                    color: #d1d5db;
                     transition: color 0.2s, transform 0.2s;
                     user-select: none;
-                    z-index: 10000 !important; /* Ensure on top */
-                    pointer-events: auto !important; /* Force clickable */
+                    z-index: 10000 !important;
+                    pointer-events: auto !important;
                 }
                 .pc-info-icon:hover {
-                    color: #58a6ff; /* Blue hover */
+                    color: #58a6ff;
                     transform: scale(1.1);
                 }
                 .explore-header-hpbox {
-                    position: relative; /* For absolute positioning of icon */
+                    position: relative;
                     pointer-events: auto !important;
                     z-index: 10;
                 }
@@ -1698,12 +1673,10 @@
         injectIcons() {
             if (!this.active) return;
 
-            // Target explore-header-hpbox in both explore and team preview
             const hpBoxes = document.querySelectorAll('.explore-header-hpbox');
 
             hpBoxes.forEach(box => {
                 if (box.querySelector('.pc-info-icon')) return;
-                // Exclude Wild Pokemon Box
                 if (box.querySelector('#explore-wild-name')) return;
 
                 const infoIcon = document.createElement('span');
@@ -1714,22 +1687,21 @@
                 infoIcon.addEventListener('click', (e) => {
                     e.stopPropagation();
                     e.preventDefault();
-                    console.log('PokechillPlus: Clicked info icon', box.id, box);
+                    this.logger.log('PokechillPlus: Clicked info icon', box.id, box);
                     this.togglePokemonInfo(box, null, infoIcon);
                 });
 
                 box.appendChild(infoIcon);
             });
 
-            // 2. Target Battle Team Slots (Small Pokeballs)
             const battleSlots = document.querySelectorAll('[id^="team-indicator-slot-"]');
             battleSlots.forEach(img => {
                 if (img.getAttribute('data-pc-info-bound')) return;
                 img.setAttribute('data-pc-info-bound', 'true');
 
                 img.style.cursor = 'help';
-                img.style.pointerEvents = 'auto'; // Force events
-                img.style.zIndex = '100'; // Ensure it's on top
+                img.style.pointerEvents = 'auto';
+                img.style.zIndex = '100';
                 img.style.position = 'relative';
 
                 img.addEventListener('click', (e) => {
@@ -1765,33 +1737,27 @@
         }
 
         togglePokemonInfo(ContainerOrBox, passedSlotId = null, targetElement = null) {
-            // Close existing popup if currently open for the SAME element, otherwise close all
             const existing = document.querySelectorAll('.pkmn-info-popup');
             existing.forEach(el => el.remove());
 
             let slotId = passedSlotId;
 
-            // If no explicit slotId, try to resolve from DOM
             if (!slotId) {
-                // Look for explore-SLOT-member or explore-ID-member
                 let parent = ContainerOrBox.closest('[id^="explore-"][id$="-member"]');
                 if (parent) {
-                    // Match explore-slot1-member OR explore-1-member
                     const match = parent.id.match(/explore-(?:slot)?(\d+)-member/);
                     if (match) {
                         slotId = 'slot' + match[1];
-                        console.log('PokechillPlus: Resolved slotId', slotId, 'from', parent.id);
+                        this.logger.log('PokechillPlus: Resolved slotId', slotId, 'from', parent.id);
                     }
                 }
             }
 
             if (!slotId) {
-                // Fallback for preview slots (if any) or other containers
                 let parent = ContainerOrBox.closest('[data-slot^="slot"]');
                 if (parent) slotId = parent.dataset.slot;
             }
 
-            // Resolve Data
             let pokemonData = null;
             let pId = null;
 
@@ -1818,14 +1784,7 @@
         showPopup(container, pokemonData, pId, targetElement = null) {
             const totalFatigue = this.calculateBattleFatigue(pokemonData);
 
-            let displayName = pId;
-            if (typeof format === 'function') {
-                displayName = format(pId);
-            } else if (this.formatPokemonName) {
-                displayName = this.formatPokemonName(pId);
-            } else {
-                displayName = pokemonData.ingameName || pokemonData.name || pId;
-            }
+            const displayName = formatPokemonName(pId);
 
             const popup = document.createElement('div');
             popup.className = 'pkmn-info-popup';
@@ -1837,25 +1796,20 @@
                 </div>
             `;
 
-            // Append to body to avoid overflow:hidden issues
             document.body.appendChild(popup);
 
-            // Position using absolute coordinates
             const rect = container.getBoundingClientRect();
             const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
             const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
 
-            // Default positioning to the left of the container's right edge
             popup.style.position = 'absolute';
-            popup.style.left = `${rect.right + scrollLeft - 200}px`; // Position to left of right edge
+            popup.style.left = `${rect.right + scrollLeft - 200}px`;
             popup.style.top = `${rect.top + scrollTop}px`;
 
-            // Special positioning if a target element (icon) is provided
             if (targetElement) {
                 const targetRect = targetElement.getBoundingClientRect();
 
-                // Position to the left of the icon
-                popup.style.left = `${targetRect.left + scrollLeft - 200 - 10}px`; // 200 is approx popup width, 10 is gap
+                popup.style.left = `${targetRect.left + scrollLeft - 200 - 10}px`;
                 popup.style.top = `${targetRect.top + scrollTop}px`;
             }
         }
@@ -1869,7 +1823,6 @@
             this.ui = new UIController();
             this.popupController = new PopUpController(this.ui);
 
-            // Services with Dependencies
             this.abilityHunter = new AbilityHunter(this.logger, this.ui);
             this.itemTracker = new ItemTracker(this.logger, this.ui);
             this.pokemonTracker = new PokemonTracker(this.logger, this.ui);
@@ -1882,11 +1835,9 @@
 
             this.battler = new AutoBattler(this.logger, this.ui, this.itemTracker, this.abilityHunter);
 
-            // Load sound settings from localStorage
             this.shinySoundEnabled = localStorage.getItem(STORAGE_KEYS.SHINY_SOUND) === 'true';
             this.abilitySoundEnabled = localStorage.getItem(STORAGE_KEYS.ABILITY_SOUND) === 'true';
 
-            // Default team remove btn to true if not set
             const savedRemoveBtnPref = localStorage.getItem(STORAGE_KEYS.TEAM_REMOVE_BTN);
             this.teamRemoveBtnEnabled = savedRemoveBtnPref === null ? true : savedRemoveBtnPref === 'true';
 
@@ -1899,7 +1850,6 @@
         }
 
         init() {
-            // Initialize UI
             this.ui.init({
                 onStart: () => this.battler.start(),
                 onStop: () => this.battler.stop(),
@@ -1938,14 +1888,12 @@
                 }
             });
 
-            // Setup shiny sound callback
             this.pokemonTracker.onShinyFound = () => {
                 if (this.shinySoundEnabled) {
                     new Audio(SHINY_SOUND_URL).play().catch(() => { });
                 }
             };
 
-            // Initialize sound checkboxes from localStorage
             const shinySoundCheckbox = document.getElementById('af-shiny-sound-toggle');
             const abilitySoundCheckbox = document.getElementById('af-ability-sound-toggle');
             const teamRemoveCheckbox = document.getElementById('af-team-remove-toggle');
@@ -1953,10 +1901,8 @@
             if (abilitySoundCheckbox) abilitySoundCheckbox.checked = this.abilitySoundEnabled;
             if (teamRemoveCheckbox) teamRemoveCheckbox.checked = this.teamRemoveBtnEnabled;
 
-            // Sync game speed from the game state (wait for game to be ready)
             this.syncGameSpeed();
 
-            // Start Observers (that don't depend on "Run" state being true, but just general monitoring)
             this.trainingMonitor.start();
             this.itemTracker.start();
             this.pokemonTracker.start();
@@ -2051,7 +1997,6 @@
         }
 
         syncGameSpeed() {
-            // Wait for game to be ready, then sync speed
             const checkAndSync = () => {
                 if (typeof saved !== 'undefined' && saved.overrideBattleTimer) {
                     const currentSpeed = this.speedController.getCurrentSpeedFromGame();
@@ -2059,7 +2004,6 @@
                     this.ui.updateSpeedUI(currentSpeed);
                     this.logger.log(`⚡ Synced game speed: ${currentSpeed}x`);
                 } else {
-                    // Game not ready yet, retry
                     setTimeout(checkAndSync, 500);
                 }
             };
