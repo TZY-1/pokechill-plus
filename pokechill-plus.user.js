@@ -1567,6 +1567,300 @@
         }
     }
 
+
+    class PokemonInfoController {
+        constructor(logger) {
+            this.logger = logger;
+            this.active = true;
+            this.observer = null;
+            this.injectStyles();
+        }
+
+        injectStyles() {
+            if (document.getElementById('pc-info-styles')) return;
+            const style = document.createElement('style');
+            style.id = 'pc-info-styles';
+            style.textContent = `
+                .pc-info-icon {
+                    position: absolute;
+                    right: 4px;
+                    top: 4px; /* Fixed distance from top as requested */
+                    cursor: pointer;
+                    font-size: 1.2em;
+                    color: #d1d5db; /* Light gray */
+                    transition: color 0.2s, transform 0.2s;
+                    user-select: none;
+                    z-index: 10000 !important; /* Ensure on top */
+                    pointer-events: auto !important; /* Force clickable */
+                }
+                .pc-info-icon:hover {
+                    color: #58a6ff; /* Blue hover */
+                    transform: scale(1.1);
+                }
+                .explore-header-hpbox {
+                    position: relative; /* For absolute positioning of icon */
+                    pointer-events: auto !important;
+                    z-index: 10;
+                }
+                .pkmn-info-popup {
+                    position: absolute;
+                    top: 100%;
+                    right: 0;
+                    margin-top: 5px;
+                    background: rgba(26, 26, 26, 0.95);
+                    backdrop-filter: blur(5px);
+                    border: 1px solid #444;
+                    border-radius: 8px;
+                    padding: 8px 12px;
+                    z-index: 10000;
+                    box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+                    max-width: 300px;
+                    width: max-content;
+                    color: #fff;
+                    font-size: 0.9rem;
+                    text-align: left;
+                    animation: pcFadeIn 0.2s ease-out;
+                }
+                @keyframes pcFadeIn {
+                    from { opacity: 0; transform: translateY(-5px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+                .pkmn-info-popup-title {
+                    font-weight: bold;
+                    color: #58a6ff;
+                    margin-bottom: 4px;
+                    border-bottom: 1px solid #444;
+                    padding-bottom: 4px;
+                    font-size: 1rem;
+                }
+                .pkmn-info-popup-row {
+                    display: flex;
+                    justify-content: space-between;
+                    margin-bottom: 0;
+                    font-size: 0.85rem;
+                }
+                .pkmn-info-popup-val {
+                    font-weight: bold;
+                    color: #e2e8f0;
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+        start() {
+            this.active = true;
+            this.setupObserver();
+            this.injectIcons();
+
+            // Close popups when clicking outside
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.pkmn-info-popup') && !e.target.closest('.pc-info-icon')) {
+                    this.removePopups();
+                }
+            });
+        }
+
+        stop() {
+            this.active = false;
+            if (this.observer) {
+                this.observer.disconnect();
+                this.observer = null;
+            }
+            this.removeIcons();
+            this.removePopups();
+        }
+
+        setupObserver() {
+            if (this.observer) return;
+
+            this.observer = new MutationObserver((mutations) => {
+                if (!this.active) return;
+
+                let shouldInject = false;
+                for (const mutation of mutations) {
+                    if (mutation.addedNodes.length > 0) {
+                        shouldInject = true;
+                        break;
+                    }
+                }
+
+                if (shouldInject) {
+                    this.injectIcons();
+                }
+            });
+
+            const target = document.body;
+            if (target) {
+                this.observer.observe(target, { childList: true, subtree: true });
+            }
+        }
+
+        injectIcons() {
+            if (!this.active) return;
+
+            // Target explore-header-hpbox in both explore and team preview
+            const hpBoxes = document.querySelectorAll('.explore-header-hpbox');
+
+            hpBoxes.forEach(box => {
+                if (box.querySelector('.pc-info-icon')) return;
+                // Exclude Wild Pokemon Box
+                if (box.querySelector('#explore-wild-name')) return;
+
+                const infoIcon = document.createElement('span');
+                infoIcon.className = 'pc-info-icon';
+                infoIcon.innerHTML = 'ⓘ';
+                infoIcon.title = 'Battle Fatigue Info';
+
+                infoIcon.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    console.log('PokechillPlus: Clicked info icon', box.id, box);
+                    this.togglePokemonInfo(box, null, infoIcon);
+                });
+
+                box.appendChild(infoIcon);
+            });
+
+            // 2. Target Battle Team Slots (Small Pokeballs)
+            const battleSlots = document.querySelectorAll('[id^="team-indicator-slot-"]');
+            battleSlots.forEach(img => {
+                if (img.getAttribute('data-pc-info-bound')) return;
+                img.setAttribute('data-pc-info-bound', 'true');
+
+                img.style.cursor = 'help';
+                img.style.pointerEvents = 'auto'; // Force events
+                img.style.zIndex = '100'; // Ensure it's on top
+                img.style.position = 'relative';
+
+                img.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+
+                    const match = img.id.match(/slot-(\d+)/);
+                    if (match) {
+                        const slotId = 'slot' + match[1];
+                        this.togglePokemonInfo(img.parentElement, slotId, img);
+                    }
+                });
+            });
+        }
+
+        removeIcons() {
+            document.querySelectorAll('.pc-info-icon').forEach(icon => icon.remove());
+        }
+
+        removePopups() {
+            document.querySelectorAll('.pkmn-info-popup').forEach(p => p.remove());
+        }
+
+        calculateBattleFatigue(pkmnData) {
+            if (!pkmnData || !pkmnData.bst || !pkmnData.ivs) return 0;
+
+            // Formula: 100 + (hp*30 * 1.15^ivH) + (def*15 * 1.15^ivD) + (sdef*15 * 1.15^ivS)
+            const hpPart = pkmnData.bst.hp * 30 * Math.pow(1.15, pkmnData.ivs.hp);
+            const defPart = pkmnData.bst.def * 15 * Math.pow(1.15, pkmnData.ivs.def);
+            const sdefPart = pkmnData.bst.sdef * 15 * Math.pow(1.15, pkmnData.ivs.sdef);
+
+            return Math.floor(100 + hpPart + defPart + sdefPart);
+        }
+
+        togglePokemonInfo(ContainerOrBox, passedSlotId = null, targetElement = null) {
+            // Close existing popup if currently open for the SAME element, otherwise close all
+            const existing = document.querySelectorAll('.pkmn-info-popup');
+            existing.forEach(el => el.remove());
+
+            let slotId = passedSlotId;
+
+            // If no explicit slotId, try to resolve from DOM
+            if (!slotId) {
+                // Look for explore-SLOT-member or explore-ID-member
+                let parent = ContainerOrBox.closest('[id^="explore-"][id$="-member"]');
+                if (parent) {
+                    // Match explore-slot1-member OR explore-1-member
+                    const match = parent.id.match(/explore-(?:slot)?(\d+)-member/);
+                    if (match) {
+                        slotId = 'slot' + match[1];
+                        console.log('PokechillPlus: Resolved slotId', slotId, 'from', parent.id);
+                    }
+                }
+            }
+
+            if (!slotId) {
+                // Fallback for preview slots (if any) or other containers
+                let parent = ContainerOrBox.closest('[data-slot^="slot"]');
+                if (parent) slotId = parent.dataset.slot;
+            }
+
+            // Resolve Data
+            let pokemonData = null;
+            let pId = null;
+
+            if (typeof team !== 'undefined' && team[slotId] && team[slotId].pkmn) {
+                pId = team[slotId].pkmn.id || team[slotId].pkmn;
+                if (typeof pkmn !== 'undefined' && pkmn[pId]) {
+                    pokemonData = pkmn[pId];
+                }
+            } else if (typeof saved !== 'undefined' && saved.previewTeams && saved.currentPreviewTeam) {
+                const previewTeam = saved.previewTeams[saved.currentPreviewTeam];
+                if (previewTeam && previewTeam[slotId] && previewTeam[slotId].pkmn) {
+                    pId = previewTeam[slotId].pkmn.id || previewTeam[slotId].pkmn;
+                    if (typeof pkmn !== 'undefined' && pkmn[pId]) {
+                        pokemonData = pkmn[pId];
+                    }
+                }
+            }
+
+            if (!pokemonData || !pId) return;
+
+            this.showPopup(ContainerOrBox, pokemonData, pId, targetElement);
+        }
+
+        showPopup(container, pokemonData, pId, targetElement = null) {
+            const totalFatigue = this.calculateBattleFatigue(pokemonData);
+
+            let displayName = pId;
+            if (typeof format === 'function') {
+                displayName = format(pId);
+            } else if (this.formatPokemonName) {
+                displayName = this.formatPokemonName(pId);
+            } else {
+                displayName = pokemonData.ingameName || pokemonData.name || pId;
+            }
+
+            const popup = document.createElement('div');
+            popup.className = 'pkmn-info-popup';
+            popup.innerHTML = `
+                <div class="pkmn-info-popup-title">${displayName}</div>
+                <div class="pkmn-info-popup-row">
+                    <span>Battle Fatigue: </span>
+                    <span class="pkmn-info-popup-val">${totalFatigue} Rounds</span>
+                </div>
+            `;
+
+            // Append to body to avoid overflow:hidden issues
+            document.body.appendChild(popup);
+
+            // Position using absolute coordinates
+            const rect = container.getBoundingClientRect();
+            const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+            const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+
+            // Default positioning to the left of the container's right edge
+            popup.style.position = 'absolute';
+            popup.style.left = `${rect.right + scrollLeft - 200}px`; // Position to left of right edge
+            popup.style.top = `${rect.top + scrollTop}px`;
+
+            // Special positioning if a target element (icon) is provided
+            if (targetElement) {
+                const targetRect = targetElement.getBoundingClientRect();
+
+                // Position to the left of the icon
+                popup.style.left = `${targetRect.left + scrollLeft - 200 - 10}px`; // 200 is approx popup width, 10 is gap
+                popup.style.top = `${targetRect.top + scrollTop}px`;
+            }
+        }
+    }
+
     // --- Main Application ---
 
     class PokechillPlus {
@@ -1584,6 +1878,7 @@
             this.typeDisplay = new MoveEffectivenessDisplay(this.logger);
             this.speedController = new GameSpeedController(this.logger);
             this.teamEnhancer = new TeamUIEnhancer(this.logger);
+            this.pokemonInfo = new PokemonInfoController(this.logger);
 
             this.battler = new AutoBattler(this.logger, this.ui, this.itemTracker, this.abilityHunter);
 
@@ -1669,6 +1964,8 @@
             if (this.teamRemoveBtnEnabled) {
                 this.teamEnhancer.start();
             }
+
+            this.pokemonInfo.start();
 
             setInterval(() => this.abilityHunter.onTick(), 500);
 
