@@ -826,6 +826,16 @@
                     <div style="font-size: 12px; color: #69df96; margin-bottom: 6px;">🐾 Gathered Pokemons</div>
                     <div id="af-pkmn-list" class="pc-item-list"><div class="empty-list">No pokemon gathered</div></div>
                 </div>
+                <!-- IVs -->
+                <div style="border-top: 1px solid #444; padding-top: 10px; margin-top: 10px;">
+                    <div style="font-size: 12px; color: #a78bfa; margin-bottom: 6px;">❖ IVs Gained</div>
+                    <div id="af-iv-list" class="pc-item-list"><div class="empty-list">No IVs gained</div></div>
+                </div>
+                <!-- Moves -->
+                <div style="border-top: 1px solid #444; padding-top: 10px; margin-top: 10px;">
+                    <div style="font-size: 12px; color: #f472b6; margin-bottom: 6px;">◇ Moves Learned</div>
+                    <div id="af-move-list" class="pc-item-list"><div class="empty-list">No moves learned</div></div>
+                </div>
                 <div style="border-top: 1px solid #444; padding-top: 10px;">
                     <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
                         <div style="font-size: 12px; color: #69df96;">★ Ability Hunt</div>
