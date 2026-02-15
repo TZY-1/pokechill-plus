@@ -893,7 +893,7 @@
                 ${this.renderSection('display', 'Display Options')}
                 ${this.renderSection('sounds', 'Sounds')}
                 ${this.renderSection('tweaks', 'Game Tweaks')}
-                <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid #333; font-size: 10px; color: #888; text-align: center;">Ctrl+Space: Toggle | Ctrl+D: Debug</div>
+                <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid #333; font-size: 10px; color: #888; text-align: center;">Made by Teazy <3</div>
             `;
 
             document.body.appendChild(this.overlay);
@@ -2043,6 +2043,13 @@
                         return;
                     }
                     this.shinyHunter.startHunt(pokemonId);
+
+                    const exitBtn = document.getElementById('preview-team-exit');
+                    if (exitBtn && exitBtn.style.display !== 'none') {
+                        exitBtn.click();
+                        this.logger.log('🚀 Auto-started battle via Save and Go');
+                    }
+
                     this.battler.start();
                 },
                 onShinyHuntStop: () => {
