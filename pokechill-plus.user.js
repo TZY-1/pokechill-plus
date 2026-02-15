@@ -423,6 +423,83 @@
         }
     }
 
+    class ShinyHunter {
+        constructor(logger, uiController) {
+            this.logger = logger;
+            this.uiController = uiController;
+            this.enabled = false;
+            this.targetPokemon = null;
+            this.onTargetFound = null;
+            this.lastArea = null;
+        }
+
+        onTick() {
+            const currentAreaId = typeof saved !== 'undefined' ? (saved.currentAreaBuffer || saved.currentArea) : null;
+            if (currentAreaId && currentAreaId !== this.lastArea) {
+                this.lastArea = currentAreaId;
+                this.uiController.updateShinySelect(this.getAvailablePokemon());
+            }
+        }
+
+        startHunt(pokemonId) {
+            if (!pokemonId) return;
+            this.targetPokemon = pokemonId;
+            this.enabled = true;
+            this.uiController.updateShinyHuntUI(true, pokemonId);
+            this.logger.log(`✨ Shiny Hunt started for: ${formatPokemonName(pokemonId)}`);
+        }
+
+        stopHunt() {
+            this.enabled = false;
+            this.targetPokemon = null;
+            this.uiController.updateShinyHuntUI(false, null);
+            this.logger.log('⏸️ Shiny Hunt stopped');
+        }
+
+        registerShiny(pkmnId) {
+            const isTarget = this.targetPokemon && pkmnId.toLowerCase().replace(/\s+/g, '') === this.targetPokemon.toLowerCase().replace(/\s+/g, '');
+
+            if (this.enabled && isTarget) {
+                const pkmnName = formatPokemonName(pkmnId);
+                this.logger.log(`🎉 Target Shiny "${pkmnName}" found via Tracker!`);
+                this.stopHunt();
+                if (this.onTargetFound) this.onTargetFound();
+                return true;
+            }
+            return false;
+        }
+
+        hasFoundShiny() {
+            if (!this.enabled || !this.targetPokemon) return false;
+
+            // Direct game state check (Safety net)
+            if (typeof pkmn !== 'undefined' && pkmn[this.targetPokemon]?.shiny) {
+                this.logger.log(`🛑 Target Shiny ${this.targetPokemon} detected in game state!`);
+                this.registerShiny(this.targetPokemon);
+                return true;
+            }
+            return false;
+        }
+
+        getAvailablePokemon() {
+            if (typeof areas === 'undefined' || typeof saved === 'undefined') return [];
+            const areaId = saved.currentAreaBuffer || saved.currentArea;
+            const area = areas[areaId];
+            if (!area) return [];
+
+            const p = new Set();
+            if (area.spawns) {
+                ['common', 'uncommon', 'rare'].forEach(r => {
+                    if (area.spawns[r]) area.spawns[r].forEach(i => p.add(i.id || i));
+                });
+            }
+            if (area.team) {
+                Object.values(area.team).forEach(slot => { if (slot?.id) p.add(slot.id); });
+            }
+            return Array.from(p).sort();
+        }
+    }
+
     class HPDisplay {
         constructor(logger) {
             this.logger = logger;
@@ -545,11 +622,12 @@
     }
 
     class AutoBattler {
-        constructor(logger, uiController, itemTracker, abilityHunter) {
+        constructor(logger, uiController, itemTracker, abilityHunter, shinyHunter) {
             this.logger = logger;
             this.uiController = uiController;
             this.itemTracker = itemTracker;
             this.abilityHunter = abilityHunter;
+            this.shinyHunter = shinyHunter;
 
             this.isRunning = false;
             this.clickCount = 0;
@@ -581,6 +659,10 @@
 
             if (this.abilityHunter.enabled) {
                 this.abilityHunter.stopHunt();
+            }
+
+            if (this.shinyHunter.enabled) {
+                this.shinyHunter.stopHunt();
             }
 
             this.uiController.updateAutoFightStatus(false);
@@ -625,6 +707,15 @@
             if (this.abilityHunter.hasReachedTarget()) {
                 this.logger.log('🎯 Ability Hunt: Target reached, stopping');
                 this.abilityHunter.stopHunt();
+                this.stop();
+                this.lastButtonState = buttonExists;
+                return;
+            }
+
+            // Shiny Hunt Check
+            if (this.shinyHunter.hasFoundShiny()) {
+                this.logger.log('✨ Shiny Hunt: Target found, stopping');
+                this.shinyHunter.stopHunt();
                 this.stop();
                 this.lastButtonState = buttonExists;
                 return;
@@ -854,6 +945,23 @@
                      <div style="font-size: 10px; color: #888; margin-bottom: 6px;">Rolled Abilities:</div>
                     <div id="af-ability-log" class="pc-item-list" style="max-height: 80px;"><div class="empty-list">No abilities rolled</div></div>
                 </div>
+                <!-- Shiny Hunt -->
+                <div style="border-top: 1px solid #444; padding-top: 10px; margin-top: 10px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+                        <div style="font-size: 12px; color: #ffc107;">✨ Shiny Hunt</div>
+                        <span id="af-shiny-status" style="color: #888; font-size: 14px;">○</span>
+                    </div>
+                    <div style="margin-bottom: 8px; font-size: 11px;">Pokemon: <span id="af-shiny-pokemon" style="color: #888; font-weight: bold;">No Pokemon selected</span></div>
+                    <div style="margin-bottom: 8px;">
+                        <select id="af-shiny-select" style="width: 100%; padding: 6px; background: #222; color: #fff; border: 1px solid #444; border-radius: 4px;">
+                            <option value="">-- Select Pokemon --</option>
+                        </select>
+                    </div>
+                    <div style="display: flex; gap: 6px; margin-bottom: 8px;">
+                        <button id="af-shiny-start" class="pc-btn pc-btn-green" style="font-size: 10px; padding: 5px;">▶ Hunt</button>
+                        <button id="af-shiny-stop" class="pc-btn pc-btn-red" style="display: none; font-size: 10px; padding: 5px;">⏸ Stop</button>
+                    </div>
+                </div>
             `;
 
             document.getElementById('section-display-content').innerHTML = `
@@ -931,6 +1039,12 @@
                     this.callbacks.onAbilityHuntStart(select?.value);
                 }
                 else if (target.id === 'af-ability-stop') this.callbacks.onAbilityHuntStop();
+
+                else if (target.id === 'af-shiny-start') {
+                    const select = this.overlay.querySelector('#af-shiny-select');
+                    this.callbacks.onShinyHuntStart(select?.value);
+                }
+                else if (target.id === 'af-shiny-stop') this.callbacks.onShinyHuntStop();
 
                 else if (target.classList.contains('pc-speed-btn')) {
                     const speed = parseFloat(target.dataset.speed);
@@ -1114,6 +1228,38 @@
                     });
                     html += `</optgroup>`;
                 }
+            });
+            select.innerHTML = html;
+        }
+
+        updateShinyHuntUI(enabled, pokemonName) {
+            const startBtn = this.overlay.querySelector('#af-shiny-start');
+            const stopBtn = this.overlay.querySelector('#af-shiny-stop');
+            const statusDot = this.overlay.querySelector('#af-shiny-status');
+            const select = this.overlay.querySelector('#af-shiny-select');
+            const label = this.overlay.querySelector('#af-shiny-pokemon');
+
+            if (startBtn) startBtn.style.display = enabled ? 'none' : 'block';
+            if (stopBtn) stopBtn.style.display = enabled ? 'block' : 'none';
+            if (statusDot) {
+                statusDot.style.color = enabled ? '#ffc107' : '#888';
+                statusDot.textContent = enabled ? '●' : '○';
+            }
+            if (select) select.disabled = enabled;
+            if (label) {
+                label.textContent = pokemonName ? formatPokemonName(pokemonName) : 'No Pokemon selected';
+                label.style.color = pokemonName ? '#ffc107' : '#888';
+            }
+        }
+
+        updateShinySelect(availablePokemon) {
+            const select = this.overlay.querySelector('#af-shiny-select');
+            if (!select) return;
+
+            let html = '<option value="">-- Select Pokemon --</option>';
+            availablePokemon.forEach(pkmnId => {
+                const name = formatPokemonName(pkmnId);
+                html += `<option value="${pkmnId}">${name}</option>`;
             });
             select.innerHTML = html;
         }
@@ -1841,6 +1987,7 @@
             this.popupController = new PopUpController(this.ui);
 
             this.abilityHunter = new AbilityHunter(this.logger, this.ui);
+            this.shinyHunter = new ShinyHunter(this.logger, this.ui);
             this.itemTracker = new ItemTracker(this.logger, this.ui);
             this.pokemonTracker = new PokemonTracker(this.logger, this.ui);
             this.trainingMonitor = new TrainingMonitor(this.logger, this.ui, this.abilityHunter);
@@ -1850,7 +1997,7 @@
             this.teamEnhancer = new TeamUIEnhancer(this.logger);
             this.pokemonInfo = new PokemonInfoController(this.logger);
 
-            this.battler = new AutoBattler(this.logger, this.ui, this.itemTracker, this.abilityHunter);
+            this.battler = new AutoBattler(this.logger, this.ui, this.itemTracker, this.abilityHunter, this.shinyHunter);
 
             this.shinySoundEnabled = localStorage.getItem(STORAGE_KEYS.SHINY_SOUND) === 'true';
             this.abilitySoundEnabled = localStorage.getItem(STORAGE_KEYS.ABILITY_SOUND) === 'true';
@@ -1867,6 +2014,10 @@
                     new Audio(ABILITY_SOUND_URL).play().catch(() => { });
                 }
             };
+
+            this.shinyHunter.onTargetFound = () => {
+                this.battler.stop();
+            };
         }
 
         init() {
@@ -1880,6 +2031,18 @@
                 },
                 onAbilityHuntStop: () => {
                     this.abilityHunter.stopHunt();
+                    this.battler.stop();
+                },
+                onShinyHuntStart: (pokemonId) => {
+                    if (!pokemonId) {
+                        this.logger.log('⚠️ Please select a target Pokemon');
+                        return;
+                    }
+                    this.shinyHunter.startHunt(pokemonId);
+                    this.battler.start();
+                },
+                onShinyHuntStop: () => {
+                    this.shinyHunter.stopHunt();
                     this.battler.stop();
                 },
                 onSpeedChange: (speed) => this.speedController.setSpeed(speed),
@@ -1946,7 +2109,10 @@
                 this.pokemonInfo.start();
             }
 
-            setInterval(() => this.abilityHunter.onTick(), 500);
+            setInterval(() => {
+                this.abilityHunter.onTick();
+                this.shinyHunter.onTick();
+            }, 500);
 
             // Workaround: Pokechill bug - training effect re-fires because updateWildPkmn()
             // processes dead wilds multiple times at high speed, each queuing a setWildPkmn()
