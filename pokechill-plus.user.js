@@ -1258,8 +1258,12 @@
 
             let html = '<option value="">-- Select Pokemon --</option>';
             availablePokemon.forEach(pkmnId => {
-                const name = formatPokemonName(pkmnId);
-                html += `<option value="${pkmnId}">${name}</option>`;
+                let name = formatPokemonName(pkmnId);
+                const isAlreadyShiny = typeof pkmn !== 'undefined' && pkmn[pkmnId]?.shiny;
+                if (isAlreadyShiny) {
+                    name += ' (✨)';
+                }
+                html += `<option value="${pkmnId}" ${isAlreadyShiny ? 'style="color: #888; font-style: italic;"' : ''}>${name}</option>`;
             });
             select.innerHTML = html;
         }
