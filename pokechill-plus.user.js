@@ -505,12 +505,14 @@
         }
 
         isFamilyShiny(pkmnId) {
-            if (typeof pkmn === 'undefined') return false;
+            if (typeof pkmn === 'undefined') return null;
             const family = this.getFamily(pkmnId);
             for (const memberKey of family) {
-                if (pkmn[memberKey]?.shiny) return true;
+                if (pkmn[memberKey]?.shiny) {
+                    return formatPokemonName(memberKey);
+                }
             }
-            return false;
+            return null;
         }
 
         getReverseMap() {
@@ -584,8 +586,9 @@
             if (!this.enabled || !this.targetPokemon) return false;
 
             // Check entire family in game state
-            if (this.isFamilyShiny(this.targetPokemon)) {
-                this.logger.log(`🛑 Target Family Shiny detected in game state!`);
+            const shinyMember = this.isFamilyShiny(this.targetPokemon);
+            if (shinyMember) {
+                this.logger.log(`🛑 Target Family Shiny ("${shinyMember}") detected in game state!`);
                 this.registerShiny(this.targetPokemon);
                 return true;
             }
@@ -1358,7 +1361,22 @@
             }
             if (select) select.disabled = enabled;
             if (label) {
-                label.textContent = pokemonName ? formatPokemonName(pokemonName) : 'No Pokemon selected';
+                let displayName = pokemonName ? formatPokemonName(pokemonName) : 'No Pokemon selected';
+
+                if (enabled && pokemonName) {
+                    if (window.PokechillPlusApp && window.PokechillPlusApp.shinyHunter) {
+                        const shinyMember = window.PokechillPlusApp.shinyHunter.isFamilyShiny(pokemonName);
+                        if (shinyMember) {
+                            if (shinyMember === formatPokemonName(pokemonName)) {
+                                displayName += ` (✨)`;
+                            } else {
+                                displayName += ` (${shinyMember} ✨)`;
+                            }
+                        }
+                    }
+                }
+
+                label.textContent = displayName;
                 label.style.color = pokemonName ? '#ffc107' : '#888';
             }
         }
@@ -1370,11 +1388,15 @@
             let html = '<option value="">-- Select Pokemon --</option>';
             availablePokemon.forEach(pkmnId => {
                 let name = formatPokemonName(pkmnId);
-                const isAlreadyShiny = shinyCheck ? shinyCheck(pkmnId) : false;
-                if (isAlreadyShiny) {
-                    name += ' (✨)';
+                const shinyMember = shinyCheck ? shinyCheck(pkmnId) : null;
+                if (shinyMember) {
+                    if (shinyMember === name) {
+                        name += ` (✨)`;
+                    } else {
+                        name += ` (${shinyMember} ✨)`;
+                    }
                 }
-                html += `<option value="${pkmnId}" ${isAlreadyShiny ? 'style="color: #888; font-style: italic;"' : ''}>${name}</option>`;
+                html += `<option value="${pkmnId}" ${shinyMember ? 'style="color: #888; font-style: italic;"' : ''}>${name}</option>`;
             });
             select.innerHTML = html;
         }
