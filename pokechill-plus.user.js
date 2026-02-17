@@ -431,13 +431,119 @@
             this.targetPokemon = null;
             this.onTargetFound = null;
             this.lastArea = null;
+            this.reversePkmnMap = null;
+            this.lowercaseMap = null;
+            this.familyCache = new Map();
+        }
+
+        getDictionaryKey(id) {
+            if (!id) return null;
+            const norm = id.toLowerCase().replace(/\s+/g, '');
+            if (this.lowercaseMap && this.lowercaseMap.has(norm)) return this.lowercaseMap.get(norm);
+
+            if (typeof pkmn === 'undefined') return null;
+
+            // Lazy build lowercase map
+            if (!this.lowercaseMap) {
+                this.lowercaseMap = new Map();
+                for (const key in pkmn) {
+                    this.lowercaseMap.set(key.toLowerCase(), key);
+                }
+            }
+            return this.lowercaseMap.get(norm) || null;
+        }
+
+        getFamily(pkmnId) {
+            const startKey = this.getDictionaryKey(pkmnId);
+            if (!startKey) return new Set([pkmnId.toLowerCase()]);
+
+            if (this.familyCache.has(startKey)) return this.familyCache.get(startKey);
+
+            const family = new Set();
+            const queue = [startKey];
+            family.add(startKey);
+
+            const revMap = this.getReverseMap();
+            let head = 0;
+            while (head < queue.length) {
+                const currentKey = queue[head++];
+                const p = pkmn[currentKey];
+                if (!p) continue;
+
+                // Evolutions (Forward)
+                if (typeof p.evolve === 'function') {
+                    const evos = p.evolve();
+                    for (const key in evos) {
+                        const targetObj = evos[key].pkmn;
+                        const targetKey = revMap.get(targetObj);
+                        if (targetKey && !family.has(targetKey)) {
+                            family.add(targetKey);
+                            queue.push(targetKey);
+                        }
+                    }
+                }
+
+                // Ancestors (Backward)
+                for (const potentialAncestorKey in pkmn) {
+                    const pa = pkmn[potentialAncestorKey];
+                    if (pa && typeof pa.evolve === 'function') {
+                        const paEvos = pa.evolve();
+                        for (const key in paEvos) {
+                            if (paEvos[key].pkmn === p) {
+                                if (!family.has(potentialAncestorKey)) {
+                                    family.add(potentialAncestorKey);
+                                    queue.push(potentialAncestorKey);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            this.familyCache.set(startKey, family);
+            return family;
+        }
+
+        isFamilyShiny(pkmnId) {
+            if (typeof pkmn === 'undefined') return false;
+            const family = this.getFamily(pkmnId);
+            for (const memberKey of family) {
+                if (pkmn[memberKey]?.shiny) return true;
+            }
+            return false;
+        }
+
+        getReverseMap() {
+            if (this.reversePkmnMap) return this.reversePkmnMap;
+            if (typeof pkmn === 'undefined') return new Map();
+            this.reversePkmnMap = new Map();
+            for (const id in pkmn) {
+                this.reversePkmnMap.set(pkmn[id], id);
+            }
+            return this.reversePkmnMap;
+        }
+
+        isRelated(caughtId, huntedId) {
+            if (!caughtId || !huntedId) return false;
+
+            const caughtKey = this.getDictionaryKey(caughtId);
+            const huntedKey = this.getDictionaryKey(huntedId);
+
+            if (!caughtKey || !huntedKey) {
+                return caughtId.toLowerCase().replace(/\s+/g, '') === huntedId.toLowerCase().replace(/\s+/g, '');
+            }
+
+            if (caughtKey === huntedKey) return true;
+
+            const family = this.getFamily(huntedKey);
+            return family.has(caughtKey);
         }
 
         onTick() {
             const currentAreaId = typeof saved !== 'undefined' ? (saved.currentAreaBuffer || saved.currentArea) : null;
             if (currentAreaId && currentAreaId !== this.lastArea) {
                 this.lastArea = currentAreaId;
-                this.uiController.updateShinySelect(this.getAvailablePokemon());
+                this.uiController.updateShinySelect(this.getAvailablePokemon(), (id) => this.isFamilyShiny(id));
             }
         }
 
@@ -457,11 +563,16 @@
         }
 
         registerShiny(pkmnId) {
-            const isTarget = this.targetPokemon && pkmnId.toLowerCase().replace(/\s+/g, '') === this.targetPokemon.toLowerCase().replace(/\s+/g, '');
+            const isTarget = this.targetPokemon && this.isRelated(pkmnId, this.targetPokemon);
 
             if (this.enabled && isTarget) {
                 const pkmnName = formatPokemonName(pkmnId);
-                this.logger.log(`🎉 Target Shiny "${pkmnName}" found via Tracker!`);
+                const targetName = formatPokemonName(this.targetPokemon);
+                const msg = pkmnId.toLowerCase() === this.targetPokemon.toLowerCase()
+                    ? `🎉 Target Shiny "${pkmnName}" found via Tracker!`
+                    : `🎉 Evolutionary Shiny "${pkmnName}" (Related to ${targetName}) found via Tracker!`;
+
+                this.logger.log(msg);
                 this.stopHunt();
                 if (this.onTargetFound) this.onTargetFound();
                 return true;
@@ -472,9 +583,9 @@
         hasFoundShiny() {
             if (!this.enabled || !this.targetPokemon) return false;
 
-            // Direct game state check (Safety net)
-            if (typeof pkmn !== 'undefined' && pkmn[this.targetPokemon]?.shiny) {
-                this.logger.log(`🛑 Target Shiny ${this.targetPokemon} detected in game state!`);
+            // Check entire family in game state
+            if (this.isFamilyShiny(this.targetPokemon)) {
+                this.logger.log(`🛑 Target Family Shiny detected in game state!`);
                 this.registerShiny(this.targetPokemon);
                 return true;
             }
@@ -1252,14 +1363,14 @@
             }
         }
 
-        updateShinySelect(availablePokemon) {
+        updateShinySelect(availablePokemon, shinyCheck) {
             const select = this.overlay.querySelector('#af-shiny-select');
             if (!select) return;
 
             let html = '<option value="">-- Select Pokemon --</option>';
             availablePokemon.forEach(pkmnId => {
                 let name = formatPokemonName(pkmnId);
-                const isAlreadyShiny = typeof pkmn !== 'undefined' && pkmn[pkmnId]?.shiny;
+                const isAlreadyShiny = shinyCheck ? shinyCheck(pkmnId) : false;
                 if (isAlreadyShiny) {
                     name += ' (✨)';
                 }
@@ -2021,6 +2132,9 @@
 
             this.shinyHunter.onTargetFound = () => {
                 this.battler.stop();
+                if (this.shinySoundEnabled) {
+                    new Audio(SHINY_SOUND_URL).play().catch(() => { });
+                }
             };
         }
 
@@ -2091,8 +2205,10 @@
                 }
             });
 
-            this.pokemonTracker.onShinyFound = () => {
-                if (this.shinySoundEnabled) {
+            this.pokemonTracker.onShinyFound = (pkmnId) => {
+                const isTarget = this.shinyHunter.registerShiny(pkmnId);
+                // Only play sound here if it's NOT handled by onTargetFound (to avoid double sound)
+                if (this.shinySoundEnabled && !isTarget) {
                     new Audio(SHINY_SOUND_URL).play().catch(() => { });
                 }
             };
@@ -2154,6 +2270,17 @@
                 if (this.pokemonTracker.onShinyFound) {
                     this.pokemonTracker.onShinyFound(pokemonName);
                 }
+            };
+            window.pcPlusTestFamily = (pokemonId) => {
+                const family = this.shinyHunter.getFamily(pokemonId);
+                const familyArray = Array.from(family);
+                this.logger.log(`🧬 Family for "${pokemonId}":`, familyArray.map(id => `${id} (${formatPokemonName(id)})`));
+                return familyArray;
+            };
+            window.pcPlusCheckRelationship = (id1, id2) => {
+                const related = this.shinyHunter.isRelated(id1, id2);
+                this.logger.log(`🔍 Relationship between "${id1}" and "${id2}": ${related ? '✅ RELATED' : '❌ NOT RELATED'}`);
+                return related;
             };
             window.pcPlusTestShinySound = () => new Audio(SHINY_SOUND_URL).play();
             window.pcPlusTestAbilitySound = () => new Audio(ABILITY_SOUND_URL).play();
